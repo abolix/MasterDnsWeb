@@ -59,6 +59,40 @@ class ServiceController:
 	def exec_start() -> str:
 		return os.getenv("MASTERVPN_SERVICE_EXEC_START", "/root/master2/MasterDnsVPN")
 
+	@classmethod
+	def resolve_runtime_binary_source(cls) -> Path:
+		raw_exec_start = cls.exec_start().strip()
+		if not raw_exec_start:
+			raise HTTPException(
+				status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+				detail="MASTERVPN_SERVICE_EXEC_START is empty",
+			)
+
+		backend_dir = Path(__file__).resolve().parent
+		configured_path = Path(raw_exec_start).expanduser()
+		candidates: list[Path] = []
+
+		if configured_path.is_absolute():
+			candidates.append(configured_path)
+		else:
+			candidates.append((backend_dir / configured_path).resolve())
+
+		if configured_path.name:
+			candidates.append(backend_dir / "newmaster" / configured_path.name)
+
+		for candidate in candidates:
+			if candidate.exists() and candidate.is_file():
+				return candidate
+
+		candidate_text = ", ".join(str(path) for path in candidates)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=(
+				"Runtime binary was not found. Checked: "
+				f"{candidate_text}. Update MASTERVPN_SERVICE_EXEC_START or place the binary in newmaster/."
+			),
+		)
+
 	@staticmethod
 	def service_user() -> str:
 		return os.getenv("MASTERVPN_SERVICE_USER", "root")
@@ -177,19 +211,18 @@ class ServiceController:
 		resolvers_path = runtime_dir / "client_resolvers.txt"
 		resolvers_path.write_text("\n".join(resolvers) + "\n", encoding="utf-8")
 
-		binary_source = Path(cls.exec_start().strip())
+		binary_source = cls.resolve_runtime_binary_source()
 		binary_dest = runtime_dir / binary_source.name
 		if binary_dest.exists() or binary_dest.is_symlink():
 			binary_dest.unlink()
-		if binary_source.exists():
-			try:
-				shutil.copy2(binary_source, binary_dest)
-				binary_dest.chmod(0o755)
-			except OSError as exc:
-				raise HTTPException(
-					status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-					detail=f"Failed to prepare runtime binary for profile '{validated_name}': {exc}",
-				) from exc
+		try:
+			shutil.copy2(binary_source, binary_dest)
+			binary_dest.chmod(0o755)
+		except OSError as exc:
+			raise HTTPException(
+				status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+				detail=f"Failed to prepare runtime binary for profile '{validated_name}': {exc}",
+			) from exc
 
 		return runtime_dir
 
@@ -200,7 +233,7 @@ class ServiceController:
 		runtime_dir = cls.generate_runtime_files(validated_name)
 		# service_port = cls.profile_listen_port(validated_name)
 		description = cls.service_description()
-		binary_name = Path(cls.exec_start().strip()).name
+		binary_name = cls.resolve_runtime_binary_source().name
 		exec_start_in_runtime = str(runtime_dir / binary_name)
 		# working_directory = cls.working_directory()
 		# exec_start = cls.exec_start().strip()
