@@ -1,0 +1,38 @@
+# Frontend (Nuxt) build outputs
+frontend/.output
+frontend/.data
+frontend/.nuxt
+frontend/.nitro
+frontend/.cache
+frontend/node_modules
+
+# Backend
+backend/static
+backend/__pycache__
+
+# Build artifacts
+dist/
+build_tmp/
+.buildenv/
+
+# Python
+.venv/
+*.py[cod]
+__pycache__/
+
+# Node
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Misc
+.DS_Store
+.fleet
+.idea
+
+# Local env files
+.env
+.env.*
+!.env.example
