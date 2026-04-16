@@ -122,7 +122,7 @@ Runtime artifacts are placed under [runtime/](runtime/).
 
 ---
 
-## 📊 Mermaid Diagrams
+## Mermaid Diagrams
 
 Project architecture and runtime flow:
 
