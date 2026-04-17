@@ -7,8 +7,10 @@ frontend/.cache
 frontend/node_modules
 
 # Backend
-backend/static
-backend/__pycache__
+backend/static/
+backend/runtime/
+backend/data_files/
+backend/__pycache__/
 
 # Build artifacts
 dist/
@@ -17,8 +19,16 @@ build_tmp/
 
 # Python
 .venv/
+venv/
+env/
+ENV/
 *.py[cod]
 __pycache__/
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
 
 # Node
 node_modules/
@@ -29,8 +39,13 @@ logs/
 
 # Misc
 .DS_Store
+Thumbs.db
 .fleet
-.idea
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
 # Local env files
 .env
