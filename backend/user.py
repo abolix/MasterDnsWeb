@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from jose import JWTError, jwt
 import os
+import sys
 
 try:
     from dotenv import load_dotenv
@@ -12,13 +14,19 @@ except ModuleNotFoundError:
 
 
 user_router = APIRouter(tags=["user"])
-load_dotenv()
+
+def _app_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+load_dotenv(dotenv_path=_app_dir() / ".env", override=False)
 ALGORITHM = "HS256"
 SECRET_KEY = os.getenv("SECRET_KEY", "default-change-this-in-production")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "password")
 TOKEN_EXPIRATION_DAYS = 365  # One year
-SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "masterweb_session")
+SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "masterdnsweb_session")
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax")
 

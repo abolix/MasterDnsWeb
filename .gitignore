@@ -6,11 +6,18 @@ frontend/.nitro
 frontend/.cache
 frontend/node_modules
 
-# Backend
+# Backend build output
 backend/static/
-backend/runtime/
-backend/data_files/
 backend/__pycache__/
+
+# Runtime data (project root in dev, binary folder in prod — never commit)
+data/
+runtime/
+
+# Env files
+.env
+.env.local
+.env.*.local
 
 # Build artifacts
 dist/

@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec for MasterWeb – Linux amd64 single-file build
 # Usage:  pyinstaller build.spec
-# Output: dist/masterweb
+# Output: dist/MasterDnsWeb
 
 from pathlib import Path
 
@@ -48,7 +48,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="masterweb",
+    name="MasterDnsWeb",
     debug=False,
     bootloader_ignore_signals=False,
     strip=True,

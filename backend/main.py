@@ -19,7 +19,7 @@ from user import user_router
 def get_app_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parent
+    return Path(__file__).resolve().parent.parent
 
 
 def get_runtime_dir() -> Path:
@@ -44,7 +44,7 @@ STATIC_INDEX_FILE = STATIC_DIR / "index.html"
 
 
 app = FastAPI(
-    title="MasterVPN API",
+    title="MasterDnsWeb API",
     description="",
     version="1.0.0"
 )
@@ -108,7 +108,7 @@ def health():
 @app.get("/info")
 def info():
     return {
-        "name": "MasterVPN API",
+        "name": "MasterDnsWeb API",
         "version": "1.0.0",
         "frontend_bundle": frontend_bundle_exists(),
     }
@@ -117,11 +117,6 @@ def info():
 @app.get("/api/info")
 def api_info():
     return info()
-
-
-@app.get("/{path:path}")
-def spa_fallback(path: str):
-    return serve_frontend(path)
 
 
 @app.get("/{full_path:path}", include_in_schema=False)

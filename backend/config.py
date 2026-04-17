@@ -1,9 +1,8 @@
-import json, re
-from ipaddress import IPv4Address
+import json, re, sys
 from pathlib import Path
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from service_controller import ServiceController
 from user import get_current_username
@@ -13,38 +12,25 @@ config_router = APIRouter(
     tags=["config"],
     dependencies=[Depends(get_current_username)],
 )
-BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data_files"
+
+def _app_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+BASE_DIR = _app_dir()
+DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
 NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class ClientConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    """Accepts any TOML-derived config keys. Only DOMAINS and ENCRYPTION_KEY are required."""
+    model_config = ConfigDict(extra="allow")
 
     DOMAINS: list[str]
-    DATA_ENCRYPTION_METHOD: int
     ENCRYPTION_KEY: str
-    PROTOCOL_TYPE: str
-    LISTEN_IP: IPv4Address
-    LISTEN_PORT: int
-    SOCKS5_AUTH: bool
-    RESOLVER_BALANCING_STRATEGY: int
-    PACKET_DUPLICATION_COUNT: int
-    SETUP_PACKET_DUPLICATION_COUNT: int
-    MIN_UPLOAD_MTU: int
-    MIN_DOWNLOAD_MTU: int
-    MAX_UPLOAD_MTU: int
-    MAX_DOWNLOAD_MTU: int
-    RX_TX_WORKERS: int
-    TUNNEL_PROCESS_WORKERS: int
-    SESSION_INIT_RACING_COUNT: int
-    MAX_PACKETS_PER_BATCH: int
-    ARQ_WINDOW_SIZE: int
-    ARQ_INITIAL_RTO_SECONDS: float
-    ARQ_MAX_RTO_SECONDS: float
-    LOG_LEVEL: str
 
     @field_validator("DOMAINS")
     @classmethod
@@ -56,66 +42,13 @@ class ClientConfig(BaseModel):
                 raise ValueError("Each domain must be a non-empty string")
         return value
 
-    @field_validator("ENCRYPTION_KEY", "PROTOCOL_TYPE", "LOG_LEVEL")
+    @field_validator("ENCRYPTION_KEY")
     @classmethod
-    def validate_non_empty_strings(cls, value: str) -> str:
+    def validate_encryption_key(cls, value: str) -> str:
         cleaned = value.strip()
         if not cleaned:
-            raise ValueError("Value cannot be empty")
+            raise ValueError("ENCRYPTION_KEY cannot be empty")
         return cleaned
-
-    @field_validator("LISTEN_PORT")
-    @classmethod
-    def validate_port(cls, value: int) -> int:
-        if not 1 <= value <= 65535:
-            raise ValueError("LISTEN_PORT must be between 1 and 65535")
-        return value
-
-    @field_validator(
-        "DATA_ENCRYPTION_METHOD",
-        "RESOLVER_BALANCING_STRATEGY",
-        "PACKET_DUPLICATION_COUNT",
-        "SETUP_PACKET_DUPLICATION_COUNT",
-        "RX_TX_WORKERS",
-        "TUNNEL_PROCESS_WORKERS",
-        "SESSION_INIT_RACING_COUNT",
-        "MAX_PACKETS_PER_BATCH",
-        "ARQ_WINDOW_SIZE",
-    )
-    @classmethod
-    def validate_non_negative_numbers(cls, value: int) -> int:
-        if value < 0:
-            raise ValueError("Value cannot be negative")
-        return value
-
-    @field_validator(
-        "MIN_UPLOAD_MTU",
-        "MIN_DOWNLOAD_MTU",
-        "MAX_UPLOAD_MTU",
-        "MAX_DOWNLOAD_MTU",
-    )
-    @classmethod
-    def validate_positive_mtu(cls, value: int) -> int:
-        if value <= 0:
-            raise ValueError("MTU values must be greater than zero")
-        return value
-
-    @field_validator("ARQ_INITIAL_RTO_SECONDS", "ARQ_MAX_RTO_SECONDS")
-    @classmethod
-    def validate_positive_rto(cls, value: float) -> float:
-        if value <= 0:
-            raise ValueError("RTO values must be greater than zero")
-        return value
-
-    @model_validator(mode="after")
-    def validate_ranges(self) -> "ClientConfig":
-        if self.MIN_UPLOAD_MTU > self.MAX_UPLOAD_MTU:
-            raise ValueError("MIN_UPLOAD_MTU cannot be greater than MAX_UPLOAD_MTU")
-        if self.MIN_DOWNLOAD_MTU > self.MAX_DOWNLOAD_MTU:
-            raise ValueError("MIN_DOWNLOAD_MTU cannot be greater than MAX_DOWNLOAD_MTU")
-        if self.ARQ_INITIAL_RTO_SECONDS > self.ARQ_MAX_RTO_SECONDS:
-            raise ValueError("ARQ_INITIAL_RTO_SECONDS cannot be greater than ARQ_MAX_RTO_SECONDS")
-        return self
 
 
 class CreateProfileRequest(BaseModel):
@@ -123,7 +56,7 @@ class CreateProfileRequest(BaseModel):
 
     name: str
     configure: ClientConfig
-    resolver: list[IPv4Address]
+    resolver: list[str]
 
     @field_validator("name")
     @classmethod
@@ -137,9 +70,9 @@ class CreateProfileRequest(BaseModel):
 
     @field_validator("resolver")
     @classmethod
-    def validate_resolver(cls, value: list[IPv4Address]) -> list[IPv4Address]:
+    def validate_resolver(cls, value: list[str]) -> list[str]:
         if not value:
-            raise ValueError("Resolver must contain at least one IPv4 address")
+            raise ValueError("Resolver must contain at least one address")
         return value
 
 
@@ -147,13 +80,13 @@ class UpdateProfileRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     configure: ClientConfig
-    resolver: list[IPv4Address]
+    resolver: list[str]
 
     @field_validator("resolver")
     @classmethod
-    def validate_resolver(cls, value: list[IPv4Address]) -> list[IPv4Address]:
+    def validate_resolver(cls, value: list[str]) -> list[str]:
         if not value:
-            raise ValueError("Resolver must contain at least one IPv4 address")
+            raise ValueError("Resolver must contain at least one address")
         return value
 
 
@@ -189,14 +122,11 @@ class ConfigCRUD:
             )
 
     @staticmethod
-    def serialize_payload(name: str, configure: ClientConfig, resolver: list[IPv4Address]) -> dict[str, Any]:
+    def serialize_payload(name: str, configure: ClientConfig, resolver: list[str]) -> dict[str, Any]:
         return {
             "name": name,
-            "configure": {
-                key: str(value) if isinstance(value, IPv4Address) else value
-                for key, value in configure.model_dump().items()
-            },
-            "resolver": [str(ip) for ip in resolver]
+            "configure": configure.model_dump(),
+            "resolver": resolver,
         }
 
     @staticmethod

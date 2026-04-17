@@ -1,9 +1,0 @@
-# Backend-specific ignores (relative to backend/)
-runtime/
-data_files/
-static/
-
-# Optional local envs when backend is used standalone
-.env
-.env.local
-.env.*.local

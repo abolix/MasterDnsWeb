@@ -3,9 +3,17 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+
+def _app_dir() -> Path:
+    """Return the app directory: binary's folder in production, project root in dev."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
 
 try:
 	from dotenv import load_dotenv
@@ -17,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from user import get_current_username
 
-load_dotenv()
+load_dotenv(dotenv_path=_app_dir() / ".env", override=False)
 
 service_router = APIRouter(
 	prefix="/service",
@@ -52,12 +60,8 @@ class ServiceController:
 		return os.getenv("MASTERVPN_SERVICE_DESCRIPTION", "MasterDnsVPN Client")
 
 	@staticmethod
-	def working_directory() -> str:
-		return os.getenv("MASTERVPN_SERVICE_WORKDIR", "/root/master2")
-
-	@staticmethod
 	def exec_start() -> str:
-		return os.getenv("MASTERVPN_SERVICE_EXEC_START", "/root/master2/MasterDnsVPN")
+		return os.getenv("MASTERVPN_SERVICE_EXEC_START", "MasterDnsVPN")
 
 	@classmethod
 	def resolve_runtime_binary_source(cls) -> Path:
@@ -68,17 +72,24 @@ class ServiceController:
 				detail="MASTERVPN_SERVICE_EXEC_START is empty",
 			)
 
+		app_dir = _app_dir()
 		backend_dir = Path(__file__).resolve().parent
 		configured_path = Path(raw_exec_start).expanduser()
 		candidates: list[Path] = []
 
+		# 1. Next to the running binary (release layout: MasterDnsWeb/ folder)
+		if configured_path.name:
+			candidates.append(app_dir / configured_path.name)
+
+		# 2. Absolute path as configured
 		if configured_path.is_absolute():
 			candidates.append(configured_path)
 		else:
 			candidates.append((backend_dir / configured_path).resolve())
 
+		# 3. Dev fallback: backend/bin/
 		if configured_path.name:
-			candidates.append(backend_dir / "newmaster" / configured_path.name)
+			candidates.append(backend_dir / "bin" / configured_path.name)
 
 		for candidate in candidates:
 			if candidate.exists() and candidate.is_file():
@@ -88,8 +99,8 @@ class ServiceController:
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 			detail=(
-				"Runtime binary was not found. Checked: "
-				f"{candidate_text}. Update MASTERVPN_SERVICE_EXEC_START or place the binary in newmaster/."
+				"MasterDnsVPN binary was not found. Checked: "
+				f"{candidate_text}. Place MasterDnsVPN next to MasterDnsWeb, or set MASTERVPN_SERVICE_EXEC_START."
 			),
 		)
 
@@ -106,19 +117,9 @@ class ServiceController:
 		return os.getenv("MASTERVPN_SERVICE_RESTART_SEC", "5")
 
 	@staticmethod
-	def use_sudo() -> bool:
-		configured_value = os.getenv("MASTERVPN_USE_SUDO")
-		if configured_value is not None:
-			return configured_value.strip().lower() == "true"
+	def _needs_sudo() -> bool:
+		"""True when the process is not already running as root."""
 		return hasattr(os, "geteuid") and os.geteuid() != 0
-
-	@staticmethod
-	def sudo_password() -> str | None:
-		value = os.getenv("MASTERVPN_SUDO_PASSWORD")
-		if value is None:
-			return None
-		cleaned = value.strip()
-		return cleaned if cleaned else None
 
 	@staticmethod
 	def unit_name(name: str) -> str:
@@ -131,12 +132,12 @@ class ServiceController:
 
 	@staticmethod
 	def profile_path(name: str) -> Path:
-		return Path(__file__).resolve().parent / "data_files" / f"{name}.json"
+		return _app_dir() / "data" / f"{name}.json"
 
 	@staticmethod
 	def _escape_env_value(value: str) -> str:
 		return value.replace("\\", "\\\\").replace('"', '\\"')
-	
+
 	@classmethod
 	def profile_listen_port(cls, name: str) -> int:
 		profile_file = cls.profile_path(name)
@@ -160,11 +161,11 @@ class ServiceController:
 			)
 
 		return port
-	
+
 	@classmethod
 	def runtime_dir_for_profile(cls, name: str) -> Path:
 		"""Each profile gets its own runtime directory with config + resolvers."""
-		base = Path(__file__).resolve().parent / "runtime" / name
+		base = _app_dir() / "runtime" / name
 		base.mkdir(parents=True, exist_ok=True)
 		return base
 
@@ -230,38 +231,16 @@ class ServiceController:
 	def build_unit_content(cls, name: str) -> str:
 		validated_name = cls.validate_name(name)
 		profile_path = cls.profile_path(validated_name)
+		# resolve binary first so we fail early with a clear message
+		binary_source = cls.resolve_runtime_binary_source()
 		runtime_dir = cls.generate_runtime_files(validated_name)
-		# service_port = cls.profile_listen_port(validated_name)
 		description = cls.service_description()
-		binary_name = cls.resolve_runtime_binary_source().name
+		binary_name = binary_source.name
 		exec_start_in_runtime = str(runtime_dir / binary_name)
-		# working_directory = cls.working_directory()
-		# exec_start = cls.exec_start().strip()
 		service_user = cls.service_user().strip()
 		restart_policy = cls.restart_policy().strip()
 		restart_sec = cls.restart_sec().strip()
 
-		# if not exec_start:
-		# 	raise HTTPException(
-		# 		status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-		# 		detail="MASTERVPN_SERVICE_EXEC_START is empty",
-		# 	)
-		# if not working_directory.strip():
-		# 	raise HTTPException(
-		# 		status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-		# 		detail="MASTERVPN_SERVICE_WORKDIR is empty",
-		# 	)
-		# if not service_user:
-		# 	raise HTTPException(
-		# 		status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-		# 		detail="MASTERVPN_SERVICE_USER is empty",
-		# 	)
-
-		if not binary_name:
-			raise HTTPException(
-				status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-				detail="MASTERVPN_SERVICE_EXEC_START is empty",
-			)
 		if not service_user:
 			raise HTTPException(
 				status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -302,21 +281,17 @@ class ServiceController:
 			)
 
 	@classmethod
-	def _build_privileged_command(cls, args: list[str]) -> tuple[list[str], str | None]:
-		if not cls.use_sudo():
-			return args, None
+	def _build_privileged_command(cls, args: list[str]) -> list[str]:
+		if not cls._needs_sudo():
+			return args
 
 		if shutil.which("sudo") is None:
 			raise HTTPException(
 				status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-				detail="sudo is not available on this host",
+				detail="sudo is not available. Run MasterDnsWeb as root.",
 			)
 
-		password = cls.sudo_password()
-		if password is not None:
-			return ["sudo", "-S", "-p", "", *args], f"{password}\n"
-
-		return ["sudo", "-n", *args], None
+		return ["sudo", "-n", *args]
 
 	@classmethod
 	def _ensure_sudo_session(cls) -> None:
@@ -354,8 +329,8 @@ class ServiceController:
 			or "no tty present" in output.lower()
 		):
 			return (
-				"Privileged access is required. Run the API as root, configure passwordless sudo, "
-				"or set MASTERVPN_SUDO_PASSWORD."
+				"Privileged access is required. Run MasterDnsWeb as root (sudo ./MasterDnsWeb) "
+				"or configure passwordless sudo for the current user."
 			)
 		return output
 
@@ -366,13 +341,11 @@ class ServiceController:
 		*,
 		check: bool = True,
 	) -> subprocess.CompletedProcess[str]:
-		cls._ensure_sudo_session()
-		command, input_text = cls._build_privileged_command(args)
+		command = cls._build_privileged_command(args)
 		process = subprocess.run(
 			command,
 			capture_output=True,
 			text=True,
-			input=input_text,
 			check=False,
 		)
 
