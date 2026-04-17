@@ -41,54 +41,13 @@ interface BackendProfileUpsertRequest {
   resolver: string[]
 }
 
-const TOML_KEY_ORDER = [
-  'DOMAINS',
-  'DATA_ENCRYPTION_METHOD',
-  'ENCRYPTION_KEY',
-  'PROTOCOL_TYPE',
-  'LISTEN_IP',
-  'LISTEN_PORT',
-  'SOCKS5_AUTH',
-  'RESOLVER_BALANCING_STRATEGY',
-  'PACKET_DUPLICATION_COUNT',
-  'SETUP_PACKET_DUPLICATION_COUNT',
-  'MIN_UPLOAD_MTU',
-  'MIN_DOWNLOAD_MTU',
-  'MAX_UPLOAD_MTU',
-  'MAX_DOWNLOAD_MTU',
-  'RX_TX_WORKERS',
-  'TUNNEL_PROCESS_WORKERS',
-  'SESSION_INIT_RACING_COUNT',
-  'MAX_PACKETS_PER_BATCH',
-  'ARQ_WINDOW_SIZE',
-  'ARQ_INITIAL_RTO_SECONDS',
-  'ARQ_MAX_RTO_SECONDS',
-  'LOG_LEVEL',
-] as const
-
-const BOOLEAN_KEYS = new Set<string>(['SOCKS5_AUTH'])
-const INTEGER_KEYS = new Set<string>([
-  'DATA_ENCRYPTION_METHOD',
-  'LISTEN_PORT',
-  'RESOLVER_BALANCING_STRATEGY',
-  'PACKET_DUPLICATION_COUNT',
-  'SETUP_PACKET_DUPLICATION_COUNT',
-  'MIN_UPLOAD_MTU',
-  'MIN_DOWNLOAD_MTU',
-  'MAX_UPLOAD_MTU',
-  'MAX_DOWNLOAD_MTU',
-  'RX_TX_WORKERS',
-  'TUNNEL_PROCESS_WORKERS',
-  'SESSION_INIT_RACING_COUNT',
-  'MAX_PACKETS_PER_BATCH',
-  'ARQ_WINDOW_SIZE',
-])
-const FLOAT_KEYS = new Set<string>(['ARQ_INITIAL_RTO_SECONDS', 'ARQ_MAX_RTO_SECONDS'])
+// Keys that must appear first in serialized TOML output
+const PRIORITY_KEYS = ['DOMAINS', 'ENCRYPTION_KEY'] as const
 
 const DEFAULT_CONFIG_OBJECT: Record<string, unknown> = {
-  DOMAINS: ['g.gfjz.cc'],
+  DOMAINS: ['example.com'],
   DATA_ENCRYPTION_METHOD: 1,
-  ENCRYPTION_KEY: '28ea6a19c0fb3e71cbbbad46b343a7f3',
+  ENCRYPTION_KEY: 'encryption_key_here',
   PROTOCOL_TYPE: 'SOCKS5',
   LISTEN_IP: '0.0.0.0',
   LISTEN_PORT: 18000,
@@ -131,8 +90,13 @@ function stringifyTomlValue(value: unknown) {
 }
 
 function configObjectToToml(config: Record<string, unknown>) {
-  return TOML_KEY_ORDER
-    .map((key) => `${key} = ${stringifyTomlValue(config[key])}`)
+  const keys = Object.keys(config)
+  const orderedKeys = [
+    ...PRIORITY_KEYS.filter(k => k in config),
+    ...keys.filter(k => !(PRIORITY_KEYS as readonly string[]).includes(k)),
+  ]
+  return orderedKeys
+    .map(key => `${key} = ${stringifyTomlValue(config[key])}`)
     .join('\n')
 }
 
@@ -162,48 +126,49 @@ function stripInlineComment(line: string) {
   return line
 }
 
-function parseTomlValue(key: string, value: string): unknown {
-  const cleaned = value.trim()
+function parseTomlValue(rawValue: string): unknown {
+  const cleaned = rawValue.trim()
 
-  if (key === 'DOMAINS') {
+  // Array
+  if (cleaned.startsWith('[')) {
     try {
-      const parsed = JSON.parse(cleaned)
-      if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string' && item.trim())) {
-        return parsed
-      }
+      return JSON.parse(cleaned)
     }
     catch {
-      return undefined
+      return cleaned
     }
-
-    return undefined
   }
 
-  if (BOOLEAN_KEYS.has(key)) {
-    if (cleaned === 'true') return true
-    if (cleaned === 'false') return false
-    return undefined
+  // Boolean
+  if (cleaned === 'true') return true
+  if (cleaned === 'false') return false
+
+  // Double-quoted string
+  if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+    try { return JSON.parse(cleaned) }
+    catch { return cleaned.slice(1, -1) }
   }
 
-  if (INTEGER_KEYS.has(key)) {
-    const parsed = Number.parseInt(cleaned, 10)
-    return Number.isNaN(parsed) ? undefined : parsed
-  }
-
-  if (FLOAT_KEYS.has(key)) {
-    const parsed = Number.parseFloat(cleaned)
-    return Number.isNaN(parsed) ? undefined : parsed
-  }
-
-  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith('\'') && cleaned.endsWith('\''))) {
+  // Single-quoted string
+  if (cleaned.startsWith('\'') && cleaned.endsWith('\'')) {
     return cleaned.slice(1, -1)
+  }
+
+  // Integer (no dot, no exponent with dot)
+  if (/^-?\d+$/.test(cleaned)) {
+    return Number.parseInt(cleaned, 10)
+  }
+
+  // Float
+  if (/^-?\d*\.\d+([eE][+-]?\d+)?$/.test(cleaned) || /^-?\d+[eE][+-]?\d+$/.test(cleaned)) {
+    return Number.parseFloat(cleaned)
   }
 
   return cleaned
 }
 
-function tomlToConfigObject(toml: string, fallback?: Record<string, unknown>) {
-  const merged = deepCloneConfig(fallback || DEFAULT_CONFIG_OBJECT)
+function tomlToConfigObject(toml: string): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
 
   for (const rawLine of toml.split(/\r?\n/)) {
     const line = stripInlineComment(rawLine).trim()
@@ -215,22 +180,12 @@ function tomlToConfigObject(toml: string, fallback?: Record<string, unknown>) {
     const key = line.slice(0, separatorIndex).trim()
     const rawValue = line.slice(separatorIndex + 1).trim()
 
-    if (!TOML_KEY_ORDER.includes(key as (typeof TOML_KEY_ORDER)[number])) {
-      continue
-    }
+    if (!key) continue
 
-    const parsed = parseTomlValue(key, rawValue)
-    if (parsed !== undefined) {
-      merged[key] = parsed
-    }
+    result[key] = parseTomlValue(rawValue)
   }
 
-  const domains = merged.DOMAINS
-  if (!Array.isArray(domains) || domains.length === 0) {
-    merged.DOMAINS = [...(DEFAULT_CONFIG_OBJECT.DOMAINS as string[])]
-  }
-
-  return merged
+  return result
 }
 
 const DEFAULT_CONFIG_TOML = configObjectToToml(DEFAULT_CONFIG_OBJECT)
@@ -329,10 +284,7 @@ export const useMasterDns = () => {
 
       instances.value = details.map(({ data }) => {
         const existing = existingById.get(data.name)
-        const configure = {
-          ...deepCloneConfig(DEFAULT_CONFIG_OBJECT),
-          ...(data.configure || {}),
-        }
+        const configure = (data.configure || {}) as Record<string, unknown>
         const resolvers = (data.resolver || []).map(item => String(item))
 
         return {
@@ -495,8 +447,7 @@ export const useMasterDns = () => {
 
   const updateInstanceConfig = async (id: string, toml: string, resolvers: string[]) => {
     const instance = getInstanceById(id)
-    const baseConfig = tomlToConfigObject(instance?.config_toml || DEFAULT_CONFIG_TOML)
-    const configure = tomlToConfigObject(toml, baseConfig)
+    const configure = tomlToConfigObject(toml)
 
     const payload: BackendProfileUpsertRequest = {
       configure,

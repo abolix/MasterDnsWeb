@@ -112,6 +112,17 @@ function removeTomlComments() {
   })
 }
 
+function getTomlKeys(toml: string): Set<string> {
+  const keys = new Set<string>()
+  for (const rawLine of toml.split(/\r?\n/)) {
+    const line = stripTomlCommentFromLine(rawLine).trim()
+    if (!line || !line.includes('=')) continue
+    const key = line.slice(0, line.indexOf('=')).trim()
+    if (key) keys.add(key)
+  }
+  return keys
+}
+
 function validateToml(toml: string): boolean {
   tomlError.value = ''
 
@@ -120,8 +131,15 @@ function validateToml(toml: string): boolean {
     return false
   }
 
-  if (!toml.split(/\r?\n/).some(line => line.includes('='))) {
-    tomlError.value = 'Configuration must contain key/value lines (e.g., DOMAINS = ["example.com"])'
+  const keys = getTomlKeys(toml)
+
+  if (!keys.has('DOMAINS')) {
+    tomlError.value = 'DOMAINS is required (e.g., DOMAINS = ["example.com"])'
+    return false
+  }
+
+  if (!keys.has('ENCRYPTION_KEY')) {
+    tomlError.value = 'ENCRYPTION_KEY is required (e.g., ENCRYPTION_KEY = "your-key")'
     return false
   }
 
