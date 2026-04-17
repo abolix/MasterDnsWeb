@@ -1,145 +1,204 @@
-# MasterVPN API Backend
+# MasterDnsWeb
 
-FastAPI backend for managing VPN client profiles, runtime files, service lifecycle, authentication, and basic system statistics.
-
-## Tech Stack
-
-- Python 3.10+
-- FastAPI
-- Pydantic
-- Uvicorn
-- python-dotenv
-- systemd integration for service control
-
-Dependencies: [requirements.txt](requirements.txt)
+MasterDnsWeb is a web panel for managing your **MasterDnsVPN** instances on a Linux server.
+You get a clean dashboard where you can create, configure, start, and stop VPN instances — all from your browser.
 
 ---
 
-## Project Structure
+## What You Need
 
-- App entrypoint: [main.py](main.py)
-- Auth routes and token/session logic: [user.py](user.py)
-- Profile/config CRUD: [config.py](config.py)
-- Service lifecycle management: [service_controller.py](service_controller.py)
-- Host resource stats: [system_stats.py](system_stats.py)
-- Profile JSON files: [data_files/](data_files/)
-- Runtime generated files per profile: [runtime/](runtime/)
+- A Linux server running **Ubuntu** (any recent version)
+- The release archive: `MasterDnsWeb-linux-amd64.tar.gz`
+- Root access (required to manage system services)
 
 ---
 
-## Quick Start
+## Installation
 
-1. Create and activate virtual environment
-2. Install dependencies
-3. Generate app secret key
-4. Configure environment variables
-5. Run server
+### 1. Extract the archive
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python main.py
+tar -xzf MasterDnsWeb-linux-amd64.tar.gz
+cd MasterDnsWeb
 ```
 
-Generate a secure key:
+You will see this folder:
+
+```
+MasterDnsWeb/
+  MasterDnsWeb     ← the web panel (run this)
+  MasterDnsVPN     ← the VPN client binary
+  .env             ← your settings
+```
+
+### 2. Edit your settings
+
+Open `.env` in any text editor:
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
+nano .env
 ```
 
-Copy the output and update `SECRET_KEY` in `.env`:
+The only things you **must** change before starting:
 
 ```env
-SECRET_KEY=<paste-output-here>
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=changeme   ← change this to something strong
 ```
 
-Default URL: `http://127.0.0.1:8000`
+Everything else already has safe defaults. Save and close.
+
+### 3. Start the panel
+
+```bash
+sudo ./MasterDnsWeb
+```
+
+> **Why sudo?** The panel needs root access to create and control system services for each VPN instance.
+
+The panel is now running. Open your browser and go to:
+
+```
+http://<your-server-ip>:8000
+```
+
+Log in with the username and password you set in `.env`.
 
 ---
 
-## Environment Variables
+## How to Keep It Running (Optional)
 
-Core app:
+If you want the panel to start automatically when your server reboots, create a system service.
 
-- `HOST` (default: `0.0.0.0`)
-- `PORT` (default: `8000`)
-- `SECRET_KEY`
-- `ADMIN_USERNAME` (default: `admin`)
-- `ADMIN_PASSWORD` (default: `password`)
-- `SESSION_COOKIE_NAME` (default: `masterweb_session`)
-- `COOKIE_SECURE` (default: `false`)
-- `COOKIE_SAMESITE` (default: `lax`)
+Run this command (replace `/root/MasterDnsWeb` with your actual folder path):
 
-Service/systemd related (used by [`ServiceController`](service_controller.py)):
+```bash
+sudo nano /etc/systemd/system/masterdnsweb.service
+```
 
-- `MASTERVPN_SYSTEMD_DIR` (default: `/etc/systemd/system`)
-- `MASTERVPN_SERVICE_NAME_PREFIX` (default: `masterdnsvpn`)
-- `MASTERVPN_SERVICE_DESCRIPTION` (default: `MasterDnsVPN Client`)
-- `MASTERVPN_SERVICE_WORKDIR` (default: `/root/master2`)
-- `MASTERVPN_SERVICE_EXEC_START` (default: `/root/master2/MasterDnsVPN`)
-- `MASTERVPN_SERVICE_USER` (default: `root`)
+Paste this inside:
 
----
+```ini
+[Unit]
+Description=MasterDnsWeb Panel
+After=network.target
 
-## API Overview
+[Service]
+WorkingDirectory=/root/MasterDnsWeb
+ExecStart=/root/MasterDnsWeb/MasterDnsWeb
+Restart=always
+RestartSec=5
+User=root
 
-Registered routers in [`main.py`](main.py):
+[Install]
+WantedBy=multi-user.target
+```
 
-- User/auth router from [user.py](user.py)
-- Config router (`/config`) from [config.py](config.py)
-- Service router (`/service`) from [service_controller.py](service_controller.py)
-- System stats router (`/system-stats`) from [system_stats.py](system_stats.py)
+Then run:
 
-Utility endpoints:
-- `GET /api/health`
-- `GET /api/info`
-- SPA/static fallback handlers in [`main.py`](main.py)
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable masterdnsweb
+sudo systemctl start masterdnsweb
+```
 
 ---
 
-## Runtime + Service Flow
+## Using the Panel
 
-For a profile, [`ServiceController.generate_runtime_files`](service_controller.py) will:
+### Creating an instance
 
-1. Read profile JSON from [data_files/](data_files/)
-2. Generate:
-   - `client_config.toml`
-   - `client_resolvers.txt`
-3. Copy executable from `MASTERVPN_SERVICE_EXEC_START` into per-profile runtime dir
-4. Build service unit content via [`ServiceController.build_unit_content`](service_controller.py)
+1. Go to the **Instances** page
+2. Click **New Instance** and give it a name
+3. Click the instance to open its **Configuration** page
 
-Runtime artifacts are placed under [runtime/](runtime/).
+### Configuring an instance
+
+Paste your `client_config.toml` content into the **Configuration** text box.
+Two fields are always required:
+
+```toml
+DOMAINS = ["your-domain.com"]
+ENCRYPTION_KEY = "your-key-here"
+```
+
+All other fields from your config file are accepted — just paste the whole thing.
+
+Add your resolver IPs in the **Resolvers** box (one per line), then click **Apply & Restart**.
+
+### Starting / stopping
+
+Use the **Start**, **Stop**, and **Restart** buttons on the Instances page.
+Each instance runs as a separate system service in the background.
 
 ---
 
-## Notes
+## Folder Layout After First Run
 
-- [newmaster/MasterDnsVPN](newmaster/MasterDnsVPN) is a compiled binary artifact, not source code.
-- Runtime executable path is controlled by `MASTERVPN_SERVICE_EXEC_START`.
-- Production deployment should use a strong `SECRET_KEY` and non-default admin credentials.
-- Service endpoints require a host with `systemctl` access and correct sudo/systemd permissions.
+The panel creates these folders automatically next to the binary:
+
+```
+MasterDnsWeb/
+  MasterDnsWeb           ← web panel binary
+  MasterDnsVPN           ← VPN client binary
+  .env                   ← your settings
+  data/                  ← instance profiles (auto-created)
+  runtime/
+    my-instance/         ← working files per instance (auto-created)
+      client_config.toml
+      client_resolvers.txt
+      MasterDnsVPN
+```
 
 ---
 
-## Mermaid Diagrams
+## Settings Reference
 
-Project architecture and runtime flow:
+All settings live in the `.env` file next to the binary.
+
+| Setting | Default | Description |
+|---|---|---|
+| `ADMIN_USERNAME` | `admin` | Login username |
+| `ADMIN_PASSWORD` | `changeme` | Login password — **change this** |
+| `SECRET_KEY` | *(generated at build)* | Signs login sessions — do not share |
+| `HOST` | `0.0.0.0` | Address the panel listens on |
+| `PORT` | `8000` | Port the panel listens on |
+| `COOKIE_SECURE` | `false` | Set to `true` if using HTTPS |
+| `MASTERVPN_SERVICE_USER` | `root` | System user that runs VPN instances |
+| `MASTERVPN_SERVICE_EXEC_START` | *(auto)* | Full path to `MasterDnsVPN` — only needed if it is not in the same folder |
+
+---
+
+## How It Works
 
 ```mermaid
 flowchart TB
-   U[Admin or Client] --> API[FastAPI main.py]
+    U[You — Browser] --> PANEL[MasterDnsWeb\nport 8000]
 
-   API --> AUTH[user.py Auth and Session]
-   API --> CFG[config.py Profile CRUD]
-   API --> SVC[service_controller.py Service Lifecycle]
-   API --> STATS[system_stats.py Host Metrics]
+    PANEL --> AUTH[Login and Session]
+    PANEL --> CFG[Instance Profiles\nstored in data/]
+    PANEL --> SVC[Service Manager]
+    PANEL --> STATS[Server Stats\nCPU · RAM · Disk]
 
-   CFG --> DATA[data_files profile json]
-   SVC --> RUNTIME[runtime profile client files and binary]
-   SVC --> SYSTEMD[systemd unit masterdnsvpn-profile.service]
-   SVC --> BIN[MASTERVPN_SERVICE_EXEC_START binary source]
+    SVC --> RUNTIME[runtime/instance-name/\nclient_config.toml\nclient_resolvers.txt\nMasterDnsVPN]
+    SVC --> SYSTEMD[systemd\nmasterdnsvpn-instance.service]
 
-   SYSTEMD --> VPN[MasterDnsVPN process]
-   STATS --> HOST[CPU RAM Disk]
+    SYSTEMD --> VPN[MasterDnsVPN Process]
+    RUNTIME --> VPN
 ```
+
+---
+
+## Troubleshooting
+
+**Panel won't start**
+Make sure you are running with `sudo`. The panel needs root to manage system services.
+
+**Can't reach the panel in browser**
+Check that your server's firewall allows port `8000` (or whatever `PORT` you set in `.env`).
+
+**"MasterDnsVPN binary was not found"**
+Make sure `MasterDnsVPN` is in the same folder as `MasterDnsWeb`. If it is somewhere else, set `MASTERVPN_SERVICE_EXEC_START` in `.env` to the full path.
+
+**Instance won't start**
+Open the instance in the panel and check the logs section for more details.
