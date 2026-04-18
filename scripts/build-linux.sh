@@ -21,7 +21,7 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$ROOT_DIR/frontend"
 
 echo "==> Installing Node dependencies..."
-npm ci
+npm install
 
 echo "==> Generating static frontend..."
 npm run generate
