@@ -73,6 +73,8 @@ jobs:
 
       - name: Extract and smoke-test the binary
         run: |
+          apt-get update && apt-get install -y --no-install-recommends file curl
+
           tar -xzf MasterDnsWeb-linux-amd64.tar.gz
           cd MasterDnsWeb
           chmod +x MasterDnsWeb
