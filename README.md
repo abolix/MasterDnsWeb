@@ -3,17 +3,17 @@
 MasterDnsWeb is a web panel for managing your **MasterDnsVPN** instances on a Linux server.
 You get a clean dashboard where you can create, configure, start, and stop VPN instances — all from your browser.
 
----
+> 🇮🇷 This project is primarily designed for use on **Iran-based VPS servers**.
 
-## What You Need
+### Requirements
 
-- A Linux server running **Ubuntu** (any recent version)
+- **Ubuntu 20.04** or newer (other distros are not supported yet)
 - The release archive: `MasterDnsWeb-linux-amd64.tar.gz`
 - Root access (required to manage system services)
 
 ---
 
-## Installation
+## 📦 Installation
 
 ### 1. Extract the archive
 
@@ -66,7 +66,7 @@ Log in with the username and password you set in `.env`.
 
 ---
 
-## How to Keep It Running (Optional)
+## 🔄 How to Keep It Running (Optional)
 
 If you want the panel to start automatically when your server reboots, create a system service.
 
@@ -104,7 +104,7 @@ sudo systemctl start masterdnsweb
 
 ---
 
-## Using the Panel
+## 🖥️ Using the Panel
 
 ### Creating an instance
 
@@ -115,14 +115,7 @@ sudo systemctl start masterdnsweb
 ### Configuring an instance
 
 Paste your `client_config.toml` content into the **Configuration** text box.
-Two fields are always required:
-
-```toml
-DOMAINS = ["your-domain.com"]
-ENCRYPTION_KEY = "your-key-here"
-```
-
-All other fields from your config file are accepted — just paste the whole thing.
+All fields from your config file are accepted — just paste the whole thing.
 
 Add your resolver IPs in the **Resolvers** box (one per line), then click **Apply & Restart**.
 
@@ -133,7 +126,7 @@ Each instance runs as a separate system service in the background.
 
 ---
 
-## Folder Layout After First Run
+## 📁 Folder Layout After First Run
 
 The panel creates these folders automatically next to the binary:
 
@@ -152,7 +145,7 @@ MasterDnsWeb/
 
 ---
 
-## Settings Reference
+## ⚙️ Settings Reference
 
 All settings live in the `.env` file next to the binary.
 
@@ -169,7 +162,7 @@ All settings live in the `.env` file next to the binary.
 
 ---
 
-## How It Works
+## 🔍 How It Works
 
 ```mermaid
 flowchart TB
@@ -189,16 +182,11 @@ flowchart TB
 
 ---
 
-## Troubleshooting
+## ❓ Troubleshooting
 
-**Panel won't start**
-Make sure you are running with `sudo`. The panel needs root to manage system services.
-
-**Can't reach the panel in browser**
-Check that your server's firewall allows port `8000` (or whatever `PORT` you set in `.env`).
-
-**"MasterDnsVPN binary was not found"**
-Make sure `MasterDnsVPN` is in the same folder as `MasterDnsWeb`. If it is somewhere else, set `MASTERVPN_SERVICE_EXEC_START` in `.env` to the full path.
-
-**Instance won't start**
-Open the instance in the panel and check the logs section for more details.
+| Problem | What to do |
+|---|---|
+| **Panel won't start** | Make sure you run it with `sudo`. Root access is needed to manage services. |
+| **Can't open it in the browser** | Check your firewall — port `8000` (or your custom `PORT`) must be open. |
+| **"MasterDnsVPN binary was not found"** | Make sure `MasterDnsVPN` is in the same folder as `MasterDnsWeb`. Or set `MASTERVPN_SERVICE_EXEC_START` in `.env` to its full path. |
+| **Instance won't start** | Open the instance in the panel and check the logs for details. |
