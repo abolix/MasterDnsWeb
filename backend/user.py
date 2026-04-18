@@ -25,7 +25,23 @@ ALGORITHM = "HS256"
 SECRET_KEY = os.getenv("SECRET_KEY", "default-change-this-in-production")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "password")
-TOKEN_EXPIRATION_DAYS = 365  # One year
+TOKEN_EXPIRATION_DAYS = 30
+
+_DEFAULT_SECRETS = ("default-change-this-in-production", "change-this-before-running")
+if SECRET_KEY in _DEFAULT_SECRETS:
+    import warnings
+    warnings.warn(
+        "SECRET_KEY is set to a default value. "
+        "Change it in your .env file before deploying to production.",
+        stacklevel=1,
+    )
+if ADMIN_PASSWORD in ("password", "changeme"):
+    import warnings
+    warnings.warn(
+        "ADMIN_PASSWORD is set to a default value. "
+        "Change it in your .env file before deploying to production.",
+        stacklevel=1,
+    )
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "masterdnsweb_session")
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax")

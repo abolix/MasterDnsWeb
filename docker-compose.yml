@@ -1,0 +1,15 @@
+services:
+  masterdnsweb:
+    build: .
+    container_name: masterdnsweb
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Persist profile data across container restarts
+      - masterdnsweb_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  masterdnsweb_data:
