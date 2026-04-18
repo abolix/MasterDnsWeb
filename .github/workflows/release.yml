@@ -15,20 +15,38 @@ env:
 
 jobs:
   # ── Job 1: Build standalone Linux binary ───────────────────
+  # Build inside Ubuntu 20.04 container so the binary links against glibc 2.31
+  # and runs on Ubuntu 20.04+ servers.
   build-binary:
     runs-on: ubuntu-latest
+    container:
+      image: ubuntu:20.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            curl ca-certificates build-essential zlib1g-dev libssl-dev \
+            libffi-dev libbz2-dev libreadline-dev libsqlite3-dev \
+            liblzma-dev tk-dev uuid-dev libncurses5-dev
+          # Install Node.js 22
+          curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+          apt-get install -y nodejs
+          # Install Python 3.12 from source (20.04 ships 3.8)
+          curl -fsSL https://www.python.org/ftp/python/3.12.8/Python-3.12.8.tgz | tar xz
+          cd Python-3.12.8
+          ./configure --enable-optimizations --enable-shared --prefix=/usr/local \
+            LDFLAGS="-Wl,-rpath,/usr/local/lib"
+          make -j"$(nproc)"
+          make install
+          ln -sf /usr/local/bin/python3.12 /usr/local/bin/python3
+          ln -sf /usr/local/bin/pip3.12 /usr/local/bin/pip3
+          python3 --version
+          node --version
 
       - name: Build release archive
         run: |
