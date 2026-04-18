@@ -164,6 +164,16 @@ jobs:
         with:
           name: MasterDnsWeb-linux-amd64
 
+      - name: Delete existing release (if re-tagging)
+        run: gh release delete "${{ github.ref_name }}" --yes --cleanup-tag || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Recreate tag
+        run: |
+          git tag -f "${{ github.ref_name }}"
+          git push origin "${{ github.ref_name }}" --force
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:

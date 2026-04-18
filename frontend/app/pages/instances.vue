@@ -44,6 +44,41 @@ watch(
   { immediate: true }
 )
 
+// Auto-refresh logs every 5 seconds for the selected instance
+let logPollTimer: ReturnType<typeof setInterval> | null = null
+
+function startLogPolling() {
+  stopLogPolling()
+  logPollTimer = setInterval(async () => {
+    if (selectedInstanceId.value) {
+      await fetchInstanceLogs(selectedInstanceId.value).catch(() => {})
+    }
+  }, 5000)
+}
+
+function stopLogPolling() {
+  if (logPollTimer) {
+    clearInterval(logPollTimer)
+    logPollTimer = null
+  }
+}
+
+watch(
+  () => selectedInstanceId.value,
+  (id) => {
+    if (id) {
+      startLogPolling()
+    } else {
+      stopLogPolling()
+    }
+  },
+  { immediate: true }
+)
+
+onUnmounted(() => {
+  stopLogPolling()
+})
+
 async function handleCreateInstance() {
   if (!newInstanceName.value.trim()) return
 

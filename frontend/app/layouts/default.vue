@@ -86,7 +86,7 @@ async function handleLogout() {
           <div class="border-t border-neutral-200/80 p-3 dark:border-neutral-800/80">
             <div class="rounded-xl bg-linear-to-br from-neutral-100 to-neutral-50 px-3 py-2.5 dark:from-neutral-800/50 dark:to-neutral-800/30">
               <p class="text-[10px] font-medium tracking-wider text-neutral-400 uppercase dark:text-neutral-500">Version</p>
-              <p class="mt-0.5 text-xs font-semibold text-neutral-600 dark:text-neutral-300">v0.1.0-mock</p>
+              <p class="mt-0.5 text-xs font-semibold text-neutral-600 dark:text-neutral-300">v1.0.0</p>
             </div>
           </div>
         </div>
@@ -117,7 +117,7 @@ async function handleLogout() {
         <div class="border-t border-neutral-200/80 p-3 dark:border-neutral-800/80">
           <div class="rounded-xl bg-linear-to-br from-neutral-100 to-neutral-50 px-3 py-2.5 dark:from-neutral-800/50 dark:to-neutral-800/30">
             <p class="text-[10px] font-medium tracking-wider text-neutral-400 uppercase dark:text-neutral-500">Version</p>
-            <p class="mt-0.5 text-xs font-semibold text-neutral-600 dark:text-neutral-300">v0.1.0-mock</p>
+            <p class="mt-0.5 text-xs font-semibold text-neutral-600 dark:text-neutral-300">v1.0.0</p>
           </div>
         </div>
       </aside>
