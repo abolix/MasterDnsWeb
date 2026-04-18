@@ -3,7 +3,9 @@
 MasterDnsWeb is a web panel for managing your **MasterDnsVPN** instances on a Linux server.
 You get a clean dashboard where you can create, configure, start, and stop VPN instances — all from your browser.
 
-> 🇮🇷 This project is primarily designed for use on **Iran-based VPS servers**.
+![MasterDnsWeb Screenshot](docs/screenshot.png)
+
+> This project is primarily designed for use on **Iran-based VPS servers**.
 
 ### Requirements
 
@@ -13,7 +15,7 @@ You get a clean dashboard where you can create, configure, start, and stop VPN i
 
 ---
 
-## 📦 Installation
+## Installation
 
 ### 1. Extract the archive
 
@@ -66,7 +68,7 @@ Log in with the username and password you set in `.env`.
 
 ---
 
-## 🔄 How to Keep It Running (Optional)
+## How to Keep It Running (Optional)
 
 If you want the panel to start automatically when your server reboots, create a system service.
 
@@ -104,7 +106,7 @@ sudo systemctl start masterdnsweb
 
 ---
 
-## 🖥️ Using the Panel
+## Using the Panel
 
 ### Creating an instance
 
@@ -126,7 +128,7 @@ Each instance runs as a separate system service in the background.
 
 ---
 
-## 📁 Folder Layout After First Run
+## Folder Layout After First Run
 
 The panel creates these folders automatically next to the binary:
 
@@ -145,7 +147,7 @@ MasterDnsWeb/
 
 ---
 
-## ⚙️ Settings Reference
+## Settings Reference
 
 All settings live in the `.env` file next to the binary.
 
@@ -162,7 +164,7 @@ All settings live in the `.env` file next to the binary.
 
 ---
 
-## 🔍 How It Works
+## How It Works
 
 ```mermaid
 flowchart TB
@@ -182,7 +184,7 @@ flowchart TB
 
 ---
 
-## ❓ Troubleshooting
+## Troubleshooting
 
 | Problem | What to do |
 |---|---|
@@ -190,3 +192,9 @@ flowchart TB
 | **Can't open it in the browser** | Check your firewall — port `8000` (or your custom `PORT`) must be open. |
 | **"MasterDnsVPN binary was not found"** | Make sure `MasterDnsVPN` is in the same folder as `MasterDnsWeb`. Or set `MASTERVPN_SERVICE_EXEC_START` in `.env` to its full path. |
 | **Instance won't start** | Open the instance in the panel and check the logs for details. |
+
+---
+
+## Special Thanks
+
+A special thank you to [@shimafallah](https://github.com/shimafallah) for writing the backend.
