@@ -79,6 +79,63 @@ onUnmounted(() => {
   stopLogPolling()
 })
 
+const autoScroll = ref(true)
+const logsContainer = ref<HTMLElement | null>(null)
+
+function getPortFromToml(toml: string): string | null {
+  const match = toml.match(/^LISTEN_PORT\s*=\s*(\d+)/m)
+  return match?.[1] ?? null
+}
+
+function capitalize(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+const CRITICAL_KEYS: { key: string; label: string }[] = [
+  { key: 'DOMAINS',                 label: 'DOMAINS' },
+  { key: 'DATA_ENCRYPTION_METHOD',  label: 'DATA_ENCRYPTION_METHOD' },
+  { key: 'ENCRYPTION_KEY',          label: 'ENCRYPTION_KEY' },
+  { key: 'PROTOCOL_TYPE',           label: 'PROTOCOL_TYPE' },
+  { key: 'LISTEN_IP',               label: 'LISTEN_IP' },
+  { key: 'LISTEN_PORT',             label: 'LISTEN_PORT' },
+  { key: 'SOCKS5_AUTH',             label: 'SOCKS5_AUTH' },
+]
+
+function tomlHasKey(toml: string, key: string): boolean {
+  return new RegExp(`^${key}\\s*=`, 'm').test(toml)
+}
+
+function getMissingCriticalKeys(toml: string): string[] {
+  const missing = CRITICAL_KEYS
+    .filter(({ key }) => !tomlHasKey(toml, key))
+    .map(({ label }) => label)
+
+  // Only require SOCKS5_USER / SOCKS5_PASS when auth is enabled
+  if (tomlHasKey(toml, 'SOCKS5_AUTH')) {
+    const authLine = toml.match(/^SOCKS5_AUTH\s*=\s*(\S+)/m)
+    const authEnabled = authLine?.[1]?.toLowerCase() === 'true'
+    if (authEnabled) {
+      if (!tomlHasKey(toml, 'SOCKS5_USER')) missing.push('SOCKS5_USER')
+      if (!tomlHasKey(toml, 'SOCKS5_PASS')) missing.push('SOCKS5_PASS')
+    }
+  }
+
+  return missing
+}
+
+const missingCriticalKeys = computed(() =>
+  selectedInstance.value ? getMissingCriticalKeys(selectedInstance.value.config_toml) : []
+)
+
+watch(recentLogs, async () => {
+  if (autoScroll.value) {
+    await nextTick()
+    if (logsContainer.value) {
+      logsContainer.value.scrollTop = logsContainer.value.scrollHeight
+    }
+  }
+}, { flush: 'post' })
+
 async function handleCreateInstance() {
   if (!newInstanceName.value.trim()) return
 
@@ -222,19 +279,22 @@ async function handleDeleteInstance(id: string) {
           >
             <div class="flex items-center gap-3">
               <span
-                class="h-2.5 w-2.5 rounded-full ring-2"
+                class="h-2.5 w-2.5 rounded-full ring-2 shrink-0"
                 :class="instance.status === 'running'
                   ? 'bg-emerald-500 ring-emerald-500/20'
                   : 'bg-neutral-400 ring-neutral-400/20'"
               />
-              <span class="text-sm font-medium text-neutral-900 dark:text-white">{{ instance.name }}</span>
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-medium text-neutral-900 dark:text-white">{{ instance.name }}</span>
+                <span v-if="getPortFromToml(instance.config_toml)" class="block text-xs font-mono text-neutral-500 dark:text-neutral-400">:{{ getPortFromToml(instance.config_toml) }}</span>
+              </div>
             </div>
             <UBadge
               :color="instance.status === 'running' ? 'success' : 'neutral'"
               variant="subtle"
               size="xs"
             >
-              {{ instance.status }}
+              {{ capitalize(instance.status) }}
             </UBadge>
           </button>
         </div>
@@ -248,15 +308,44 @@ async function handleDeleteInstance(id: string) {
           <div class="flex items-start justify-between">
             <div>
               <h2 class="text-lg font-bold text-neutral-900 dark:text-white">{{ selectedInstance.name }}</h2>
-              <p class="mt-0.5 text-xs font-mono text-neutral-500 dark:text-neutral-400">{{ selectedInstance.id }}</p>
+              <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                <template v-if="getPortFromToml(selectedInstance.config_toml)">
+                  Port <span class="font-mono">{{ getPortFromToml(selectedInstance.config_toml) }}</span>
+                  &nbsp;·&nbsp;
+                </template>
+                <span class="font-medium">{{ selectedInstance.resolvers.length }}</span> resolvers
+              </p>
             </div>
             <UBadge
               :color="selectedInstance.status === 'running' ? 'success' : 'error'"
               variant="solid"
               size="md"
             >
-              {{ selectedInstance.status }}
+              {{ capitalize(selectedInstance.status) }}
             </UBadge>
+          </div>
+
+          <!-- Missing critical config alert -->
+          <div
+            v-if="missingCriticalKeys.length > 0"
+            class="mt-4 rounded-lg bg-amber-50 p-3 ring-1 ring-amber-200 dark:bg-amber-900/20 dark:ring-amber-700/40"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-triangle-alert" class="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <p class="text-sm font-medium text-amber-800 dark:text-amber-300">Incomplete configuration</p>
+              </div>
+              <UButton
+                icon="i-lucide-settings"
+                color="warning"
+                variant="soft"
+                size="xs"
+                class="shrink-0"
+                @click="goToConfig(selectedInstance.id)"
+              >
+                Configure
+              </UButton>
+            </div>
           </div>
 
           <!-- Instance Metrics -->
@@ -336,13 +425,19 @@ async function handleDeleteInstance(id: string) {
         <!-- Recent Logs -->
         <UCard>
           <template #header>
-            <div class="flex items-center gap-2">
-              <UIcon name="i-lucide-terminal" class="h-4 w-4 text-neutral-500" />
-              <span class="text-sm font-semibold text-neutral-900 dark:text-white">Recent Logs</span>
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-terminal" class="h-4 w-4 text-neutral-500" />
+                <span class="text-sm font-semibold text-neutral-900 dark:text-white">Recent Logs</span>
+              </div>
+              <label class="flex cursor-pointer select-none items-center gap-1.5">
+                <input type="checkbox" v-model="autoScroll" class="rounded accent-primary-500" />
+                <span class="text-xs text-neutral-500 dark:text-neutral-400">Auto-scroll</span>
+              </label>
             </div>
           </template>
 
-          <div class="overflow-auto rounded-lg bg-neutral-950 p-4 font-mono text-xs leading-relaxed">
+          <div ref="logsContainer" class="h-48 overflow-y-auto rounded-lg bg-neutral-950 p-4 font-mono text-xs leading-relaxed">
             <div v-if="recentLogs.length === 0" class="text-neutral-600">No logs yet.</div>
             <div v-for="(log, idx) in recentLogs" :key="idx" class="text-neutral-400">
               {{ log }}
