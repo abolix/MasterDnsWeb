@@ -83,7 +83,45 @@ async function handleLogout() {
           </div>
 
           <!-- Mobile sidebar footer -->
-          <div class="border-t border-neutral-200/80 p-3 dark:border-neutral-800/80">
+          <div class="border-t border-neutral-200/80 p-3 space-y-2 dark:border-neutral-800/80">
+            <div class="space-y-1">
+              <UButton
+                to="https://github.com/masterking32/MasterDnsVPN"
+                target="_blank"
+                rel="noopener noreferrer"
+                icon="i-simple-icons-github"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                class="w-full justify-start"
+              >
+                MasterDnsVPN
+              </UButton>
+              <UButton
+                to="https://github.com/abolix/MasterDnsWeb/"
+                target="_blank"
+                rel="noopener noreferrer"
+                icon="i-simple-icons-github"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                class="w-full justify-start"
+              >
+                MasterDnsWeb
+              </UButton>
+              <UButton
+                to="https://t.me/masterdnsvpn"
+                target="_blank"
+                rel="noopener noreferrer"
+                icon="i-simple-icons-telegram"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                class="w-full justify-start"
+              >
+                Telegram Channel
+              </UButton>
+            </div>
             <div class="rounded-xl bg-linear-to-br from-neutral-100 to-neutral-50 px-3 py-2.5 dark:from-neutral-800/50 dark:to-neutral-800/30">
               <p class="text-[10px] font-medium tracking-wider text-neutral-400 uppercase dark:text-neutral-500">Version</p>
               <p class="mt-0.5 text-xs font-semibold text-neutral-600 dark:text-neutral-300">v1.0.1</p>
@@ -114,7 +152,45 @@ async function handleLogout() {
         </nav>
 
         <!-- Sidebar footer -->
-        <div class="border-t border-neutral-200/80 p-3 dark:border-neutral-800/80">
+        <div class="border-t border-neutral-200/80 p-3 space-y-2 dark:border-neutral-800/80">
+          <div class="space-y-1">
+            <UButton
+              to="https://github.com/masterking32/MasterDnsVPN"
+              target="_blank"
+              rel="noopener noreferrer"
+              icon="i-simple-icons-github"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              class="w-full justify-start"
+            >
+              MasterDnsVPN
+            </UButton>
+            <UButton
+              to="https://github.com/abolix/MasterDnsWeb/"
+              target="_blank"
+              rel="noopener noreferrer"
+              icon="i-simple-icons-github"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              class="w-full justify-start"
+            >
+              MasterDnsWeb
+            </UButton>
+            <UButton
+              to="https://t.me/masterdnsvpn"
+              target="_blank"
+              rel="noopener noreferrer"
+              icon="i-simple-icons-telegram"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              class="w-full justify-start"
+            >
+              Telegram Channel
+            </UButton>
+          </div>
           <div class="rounded-xl bg-linear-to-br from-neutral-100 to-neutral-50 px-3 py-2.5 dark:from-neutral-800/50 dark:to-neutral-800/30">
             <p class="text-[10px] font-medium tracking-wider text-neutral-400 uppercase dark:text-neutral-500">Version</p>
             <p class="mt-0.5 text-xs font-semibold text-neutral-600 dark:text-neutral-300">v1.0.1</p>
