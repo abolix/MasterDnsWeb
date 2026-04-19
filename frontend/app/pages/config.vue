@@ -172,6 +172,7 @@ async function applyConfig() {
       icon: 'i-lucide-check-circle',
       color: 'success',
     })
+    navigateTo('/instances')
   }
   catch (error: any) {
     toast.add({
