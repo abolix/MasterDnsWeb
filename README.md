@@ -1,6 +1,8 @@
 # MasterDnsWeb
 
-MasterDnsWeb is a web panel for managing your **MasterDnsVPN** instances on a Linux server.
+[فارسی](README.fa.md)
+
+MasterDnsWeb is a web panel for managing your **[MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN)** instances on a Linux server.
 You get a clean dashboard where you can create, configure, start, and stop VPN instances — all from your browser.
 
 ![MasterDnsWeb Screenshot](docs/screenshot.png)
