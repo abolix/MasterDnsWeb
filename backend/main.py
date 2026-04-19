@@ -46,7 +46,7 @@ STATIC_INDEX_FILE = STATIC_DIR / "index.html"
 app = FastAPI(
     title="MasterDnsWeb API",
     description="",
-    version="1.0.1"
+    version="1.0.2"
 )
 _cors_env = os.getenv("CORS_ORIGINS", "")
 _cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else [
@@ -111,7 +111,7 @@ def health():
 def info():
     return {
         "name": "MasterDnsWeb API",
-        "version": "1.0.1",
+        "version": "1.0.2",
         "frontend_bundle": frontend_bundle_exists(),
     }
 

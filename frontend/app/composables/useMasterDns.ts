@@ -233,6 +233,8 @@ export const useMasterDns = () => {
 
   const selectedInstanceId = useState('dns.selectedInstanceId', () => instances.value[0]?.id || null)
 
+  const isApiReachable = useState('dns.isApiReachable', () => true)
+
   const resolveApiBase = () => {
     if (config.public.apiBase) {
       return config.public.apiBase
@@ -427,7 +429,7 @@ export const useMasterDns = () => {
     }
   }
 
-  const fetchInstanceLogs = async (id: string, lines: number = 100) => {
+  const fetchInstanceLogs = async (id: string, lines: number = 200) => {
     try {
       const result = await $fetch<{ output: string }>(`/service/${encodeURIComponent(id)}/logs`, {
         ...fetchOptions,
@@ -437,6 +439,27 @@ export const useMasterDns = () => {
       const instance = getInstanceById(id)
       if (instance && result.output) {
         instance.logs = result.output.split('\n').filter(Boolean)
+      }
+      return result
+    }
+    catch {
+      return null
+    }
+  }
+
+  const fetchInstanceMetrics = async (id: string) => {
+    try {
+      const result = await $fetch<{ cpu: number, memory: number, uptime_seconds: number }>(`/service/${encodeURIComponent(id)}/metrics`, {
+        ...fetchOptions,
+        method: 'GET',
+      })
+      const instance = getInstanceById(id)
+      if (instance) {
+        instance.metrics = {
+          cpu: result.cpu,
+          memory: result.memory,
+          uptime_seconds: result.uptime_seconds,
+        }
       }
       return result
     }
@@ -494,9 +517,10 @@ export const useMasterDns = () => {
         disk_used_percent: stats.disk.usage_percent,
         timestamp: stats.collected_at,
       }
+      isApiReachable.value = true
     }
     catch {
-      // Keep previous values if backend is unreachable
+      isApiReachable.value = false
     }
   }
 
@@ -521,6 +545,57 @@ export const useMasterDns = () => {
     }
   }
 
+  const exportInstance = async (id: string) => {
+    const blob = await $fetch<Blob>(`/config/export/${encodeURIComponent(id)}`, {
+      ...fetchOptions,
+      method: 'GET',
+      responseType: 'blob',
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${id}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const importInstance = async (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    await $fetch('/config/import', {
+      ...fetchOptions,
+      method: 'POST',
+      body: formData,
+    })
+    await loadInstances(true)
+  }
+
+  const exportAllInstances = async () => {
+    const blob = await $fetch<Blob>('/config/export-all', {
+      ...fetchOptions,
+      method: 'GET',
+      responseType: 'blob',
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'masterdns-backup.zip'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const importAllInstances = async (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const result = await $fetch<{ created: string[], errors: string[] }>('/config/import-all', {
+      ...fetchOptions,
+      method: 'POST',
+      body: formData,
+    })
+    await loadInstances(true)
+    return result
+  }
+
   if (import.meta.client && !hasLoaded.value && !isLoading.value) {
     void loadInstances()
   }
@@ -530,6 +605,7 @@ export const useMasterDns = () => {
     hostMetrics: readonly(hostMetrics),
     isLoading: readonly(isLoading),
     hasLoaded: readonly(hasLoaded),
+    isApiReachable: readonly(isApiReachable),
     selectedInstanceId,
     binaryVersion: readonly(binaryVersion),
     loadInstances,
@@ -542,9 +618,14 @@ export const useMasterDns = () => {
     restartInstance,
     fetchInstanceStatus,
     fetchInstanceLogs,
+    fetchInstanceMetrics,
     updateInstanceConfig,
     updateHostMetrics,
     getInstanceLogs,
     fetchBinaryVersion,
+    exportInstance,
+    importInstance,
+    exportAllInstances,
+    importAllInstances,
   }
 }

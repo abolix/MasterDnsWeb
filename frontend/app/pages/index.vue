@@ -3,7 +3,7 @@ definePageMeta({
   title: 'Dashboard'
 })
 
-const { hostMetrics, instances, updateHostMetrics } = useMasterDns()
+const { hostMetrics, instances, updateHostMetrics, isApiReachable } = useMasterDns()
 
 // ── Polling ──────────────────────────────────────────────────────────────────
 const POLL_INTERVAL = 5
@@ -32,6 +32,15 @@ onUnmounted(() => {
 })
 
 const nextRefreshIn = computed(() => POLL_INTERVAL - secondsSinceUpdate.value)
+
+const isRefreshing = ref(false)
+async function manualRefresh() {
+  isRefreshing.value = true
+  await updateHostMetrics()
+  lastUpdatedAt.value = new Date()
+  secondsSinceUpdate.value = 0
+  isRefreshing.value = false
+}
 
 // ── Metric colors ─────────────────────────────────────────────────────────────
 const cpuColor = computed(() => {
@@ -76,11 +85,17 @@ function getAuthLabel(toml: string): { enabled: boolean; user: string | null } |
   return { enabled: true, user: userMatch?.[1]?.trim() ?? null }
 }
 
+function getProtocolType(toml: string): string | null {
+  const match = toml.match(/^PROTOCOL_TYPE\s*=\s*["']?([^"'\n\r]+?)["']?\s*$/m)
+  return match?.[1]?.trim() ?? null
+}
+
 const instancesWithMeta = computed(() =>
   instances.value.map(i => ({
     instance: i,
     port: getPortFromToml(i.config_toml),
     auth: getAuthLabel(i.config_toml),
+    protocol: getProtocolType(i.config_toml),
   }))
 )
 
@@ -88,6 +103,18 @@ const instancesWithMeta = computed(() =>
 
 <template>
   <div class="space-y-8">
+    <!-- Connection Lost Banner -->
+    <div
+      v-if="!isApiReachable"
+      class="flex items-center gap-3 rounded-xl bg-rose-50 px-4 py-3 ring-1 ring-rose-200 dark:bg-rose-900/20 dark:ring-rose-700/40"
+    >
+      <span class="relative flex h-2.5 w-2.5 shrink-0">
+        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-70" />
+        <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-500" />
+      </span>
+      <p class="text-sm font-medium text-rose-800 dark:text-rose-300">Connection lost — retrying every {{ POLL_INTERVAL }}s…</p>
+    </div>
+
     <!-- Page Header -->
     <div>
       <h1 class="text-2xl font-bold tracking-tight text-neutral-900 dark:text-white">Dashboard</h1>
@@ -107,9 +134,19 @@ const instancesWithMeta = computed(() =>
 
       <!-- Combined polling card -->
       <div class="rounded-xl bg-linear-to-br from-blue-500/10 to-violet-500/5 p-4 ring-1 ring-blue-500/20 dark:from-blue-500/15 dark:to-violet-600/5 dark:ring-blue-500/10">
-        <div class="flex items-center gap-1.5">
-          <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500"></span>
-          <p class="text-xs font-medium text-blue-700 dark:text-blue-400">Live · every {{ POLL_INTERVAL }}s</p>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-1.5">
+            <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500"></span>
+            <p class="text-xs font-medium text-blue-700 dark:text-blue-400">Live · every {{ POLL_INTERVAL }}s</p>
+          </div>
+          <UButton
+            icon="i-lucide-refresh-cw"
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            :loading="isRefreshing"
+            @click="manualRefresh"
+          />
         </div>
         <p class="mt-1 text-sm font-bold text-blue-900 dark:text-blue-100">{{ lastUpdatedAt.toLocaleTimeString() }}</p>
         <p class="mt-0.5 text-xs text-blue-700/60 dark:text-blue-400/60">Next in {{ nextRefreshIn }}s</p>
@@ -203,7 +240,7 @@ const instancesWithMeta = computed(() =>
       <!-- Grid -->
       <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <NuxtLink
-          v-for="{ instance, port, auth } in instancesWithMeta"
+          v-for="{ instance, port, auth, protocol } in instancesWithMeta"
           :key="instance.id"
           to="/instances"
           class="group relative overflow-hidden rounded-2xl p-5 ring-1 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
@@ -257,6 +294,14 @@ const instancesWithMeta = computed(() =>
             >
               <UIcon name="i-lucide-network" class="h-3 w-3 shrink-0" />
               {{ port ? `:${port}` : 'no port' }}
+            </span>
+
+            <span
+              v-if="protocol"
+              class="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-xs font-semibold text-violet-700 ring-1 ring-violet-500/20 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/25"
+            >
+              <UIcon name="i-lucide-shield" class="h-3 w-3 shrink-0" />
+              {{ protocol }}
             </span>
 
             <template v-if="auth !== null">

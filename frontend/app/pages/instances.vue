@@ -3,12 +3,23 @@ definePageMeta({
   title: 'Instances'
 })
 
-const { instances, selectedInstanceId, loadInstances, createInstance, deleteInstance, startInstance, stopInstance, restartInstance, fetchInstanceLogs, getInstanceLogs } = useMasterDns()
+const { instances, selectedInstanceId, loadInstances, createInstance, deleteInstance, startInstance, stopInstance, restartInstance, fetchInstanceLogs, fetchInstanceMetrics, getInstanceLogs, updateInstanceConfig, exportInstance, importInstance, exportAllInstances, importAllInstances } = useMasterDns()
 const toast = useToast()
 
 const isCreateDialogOpen = ref(false)
 const newInstanceName = ref('')
 const isCreating = ref(false)
+const isDeleteDialogOpen = ref(false)
+const pendingDeleteId = ref<string | null>(null)
+const isDuplicating = ref(false)
+const importFileInput = ref<HTMLInputElement | null>(null)
+const restoreFileInput = ref<HTMLInputElement | null>(null)
+const isBackingUp = ref(false)
+
+const pendingDeleteName = computed(() => {
+  if (!pendingDeleteId.value) return ''
+  return instances.value.find(i => i.id === pendingDeleteId.value)?.name ?? ''
+})
 
 const selectedInstance = computed(() => {
   if (!selectedInstanceId.value) return null
@@ -17,7 +28,13 @@ const selectedInstance = computed(() => {
 
 const recentLogs = computed(() => {
   if (!selectedInstance.value) return []
-  return getInstanceLogs(selectedInstance.value.id, 10)
+  return getInstanceLogs(selectedInstance.value.id, 200)
+})
+
+const filteredLogs = computed(() => {
+  if (!logSearch.value.trim()) return recentLogs.value
+  const q = logSearch.value.toLowerCase()
+  return recentLogs.value.filter(line => line.toLowerCase().includes(q))
 })
 
 onMounted(async () => {
@@ -46,6 +63,7 @@ watch(
 
 // Auto-refresh logs every 5 seconds for the selected instance
 let logPollTimer: ReturnType<typeof setInterval> | null = null
+let metricsPollTimer: ReturnType<typeof setInterval> | null = null
 
 function startLogPolling() {
   stopLogPolling()
@@ -63,13 +81,34 @@ function stopLogPolling() {
   }
 }
 
+function startMetricsPolling() {
+  stopMetricsPolling()
+  if (selectedInstanceId.value) {
+    fetchInstanceMetrics(selectedInstanceId.value).catch(() => {})
+  }
+  metricsPollTimer = setInterval(async () => {
+    if (selectedInstanceId.value) {
+      await fetchInstanceMetrics(selectedInstanceId.value).catch(() => {})
+    }
+  }, 10000)
+}
+
+function stopMetricsPolling() {
+  if (metricsPollTimer) {
+    clearInterval(metricsPollTimer)
+    metricsPollTimer = null
+  }
+}
+
 watch(
   () => selectedInstanceId.value,
   (id) => {
     if (id) {
       startLogPolling()
+      startMetricsPolling()
     } else {
       stopLogPolling()
+      stopMetricsPolling()
     }
   },
   { immediate: true }
@@ -77,10 +116,14 @@ watch(
 
 onUnmounted(() => {
   stopLogPolling()
+  stopMetricsPolling()
 })
 
 const autoScroll = ref(true)
 const logsContainer = ref<HTMLElement | null>(null)
+const logSearch = ref('')
+const isLogFullscreen = ref(false)
+const fullscreenLogsContainer = ref<HTMLElement | null>(null)
 
 function getPortFromToml(toml: string): string | null {
   const match = toml.match(/^LISTEN_PORT\s*=\s*(\d+)/m)
@@ -256,9 +299,24 @@ function goToConfig(id: string) {
   navigateTo(`/config?instance=${id}`)
 }
 
-async function handleDeleteInstance(id: string) {
+function requestDeleteInstance(id: string) {
+  pendingDeleteId.value = id
+  isDeleteDialogOpen.value = true
+}
+
+async function confirmDeleteInstance() {
+  const id = pendingDeleteId.value
+  if (!id) return
+  isDeleteDialogOpen.value = false
+  pendingDeleteId.value = null
   try {
     await deleteInstance(id)
+    toast.add({
+      title: 'Instance deleted',
+      description: `${id} has been removed.`,
+      icon: 'i-lucide-check-circle',
+      color: 'success',
+    })
   }
   catch (error: any) {
     toast.add({
@@ -267,6 +325,100 @@ async function handleDeleteInstance(id: string) {
       icon: 'i-lucide-circle-alert',
       color: 'error',
     })
+  }
+}
+
+async function handleDuplicate() {
+  if (!selectedInstance.value) return
+  isDuplicating.value = true
+  const src = selectedInstance.value
+  const newName = `${src.name}-copy`
+
+  try {
+    await createInstance(newName)
+
+    // Increment port to avoid conflict
+    let toml = src.config_toml
+    const currentPort = getPortFromToml(toml)
+    if (currentPort) {
+      toml = toml.replace(
+        /^(LISTEN_PORT\s*=\s*)\d+/m,
+        `$1${Number(currentPort) + 1}`
+      )
+    }
+    await updateInstanceConfig(newName, toml, [...src.resolvers])
+
+    toast.add({
+      title: 'Instance duplicated',
+      description: `Created ${newName} from ${src.name}${currentPort ? ` (port ${Number(currentPort) + 1})` : ''}.`,
+      icon: 'i-lucide-copy',
+      color: 'success',
+    })
+  }
+  catch (error: any) {
+    toast.add({
+      title: 'Could not duplicate instance',
+      description: error?.data?.detail || error?.message || 'Duplication failed.',
+      icon: 'i-lucide-circle-alert',
+      color: 'error',
+    })
+  }
+  finally {
+    isDuplicating.value = false
+  }
+}
+
+async function handleExport() {
+  if (!selectedInstance.value) return
+  try {
+    await exportInstance(selectedInstance.value.id)
+    toast.add({ title: 'Exported', description: `${selectedInstance.value.name}.json downloaded.`, icon: 'i-lucide-download', color: 'success' })
+  }
+  catch (error: any) {
+    toast.add({ title: 'Export failed', description: error?.data?.detail || error?.message || 'Could not export.', icon: 'i-lucide-circle-alert', color: 'error' })
+  }
+}
+
+async function handleImport(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  input.value = ''
+  try {
+    await importInstance(file)
+    toast.add({ title: 'Imported', description: `${file.name} imported successfully.`, icon: 'i-lucide-upload', color: 'success' })
+  }
+  catch (error: any) {
+    toast.add({ title: 'Import failed', description: error?.data?.detail || error?.message || 'Could not import.', icon: 'i-lucide-circle-alert', color: 'error' })
+  }
+}
+
+async function handleBackupAll() {
+  isBackingUp.value = true
+  try {
+    await exportAllInstances()
+    toast.add({ title: 'Backup downloaded', description: 'masterdns-backup.zip saved.', icon: 'i-lucide-archive', color: 'success' })
+  }
+  catch (error: any) {
+    toast.add({ title: 'Backup failed', description: error?.data?.detail || error?.message || 'Could not create backup.', icon: 'i-lucide-circle-alert', color: 'error' })
+  }
+  finally {
+    isBackingUp.value = false
+  }
+}
+
+async function handleRestoreAll(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  input.value = ''
+  try {
+    const result = await importAllInstances(file)
+    const desc = `Created: ${result.created.length}${result.errors.length ? `, Errors: ${result.errors.length}` : ''}`
+    toast.add({ title: 'Restore complete', description: desc, icon: 'i-lucide-archive-restore', color: result.errors.length ? 'warning' : 'success' })
+  }
+  catch (error: any) {
+    toast.add({ title: 'Restore failed', description: error?.data?.detail || error?.message || 'Could not restore.', icon: 'i-lucide-circle-alert', color: 'error' })
   }
 }
 
@@ -332,8 +484,20 @@ async function copyLink(link: string) {
       </div>
 
       <!-- Create Dialog: default slot = trigger, #body = content -->
-      <UModal v-model:open="isCreateDialogOpen" title="Create New Instance">
-        <UButton icon="i-lucide-plus" size="lg">New Instance</UButton>
+      <div class="flex items-center gap-2">
+        <UButton icon="i-lucide-archive" variant="outline" color="neutral" :loading="isBackingUp" @click="handleBackupAll">
+          Backup
+        </UButton>
+        <UButton icon="i-lucide-archive-restore" variant="outline" color="neutral" @click="restoreFileInput?.click()">
+          Restore
+        </UButton>
+        <input ref="restoreFileInput" type="file" accept=".zip" class="hidden" @change="handleRestoreAll" />
+        <UButton icon="i-lucide-upload" variant="outline" color="neutral" @click="importFileInput?.click()">
+          Import
+        </UButton>
+        <input ref="importFileInput" type="file" accept=".json" class="hidden" @change="handleImport" />
+        <UModal v-model:open="isCreateDialogOpen" title="Create New Instance">
+          <UButton icon="i-lucide-plus" size="lg">New Instance</UButton>
 
         <template #body>
           <div class="space-y-4">
@@ -353,6 +517,30 @@ async function copyLink(link: string) {
           <div class="flex justify-end gap-2">
             <UButton variant="ghost" @click="isCreateDialogOpen = false">Cancel</UButton>
             <UButton @click="handleCreateInstance" :loading="isCreating">Create</UButton>
+          </div>
+        </template>
+      </UModal>
+      </div>
+
+      <!-- Delete Confirmation -->
+      <UModal v-model:open="isDeleteDialogOpen" title="Delete Instance">
+        <template #default />
+        <template #body>
+          <div class="space-y-3">
+            <div class="flex items-center gap-3 rounded-lg bg-rose-50 p-3 ring-1 ring-rose-200 dark:bg-rose-900/20 dark:ring-rose-700/40">
+              <UIcon name="i-lucide-triangle-alert" class="h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
+              <p class="text-sm text-rose-800 dark:text-rose-300">This action cannot be undone.</p>
+            </div>
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
+              This will stop the service, remove the systemd unit, and delete all configuration for
+              <span class="font-semibold text-neutral-900 dark:text-white">{{ pendingDeleteName }}</span>.
+            </p>
+          </div>
+        </template>
+        <template #footer>
+          <div class="flex justify-end gap-2">
+            <UButton variant="ghost" @click="isDeleteDialogOpen = false">Cancel</UButton>
+            <UButton color="error" @click="confirmDeleteInstance">Delete</UButton>
           </div>
         </template>
       </UModal>
@@ -429,6 +617,10 @@ async function copyLink(link: string) {
             <div>
               <h2 class="text-lg font-bold text-neutral-900 dark:text-white">{{ selectedInstance.name }}</h2>
               <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                <template v-if="getTomlField(selectedInstance.config_toml, 'PROTOCOL_TYPE')">
+                  <span class="font-semibold">{{ getTomlField(selectedInstance.config_toml, 'PROTOCOL_TYPE') }}</span>
+                  &nbsp;·&nbsp;
+                </template>
                 <template v-if="getPortFromToml(selectedInstance.config_toml)">
                   Port <span class="font-mono">{{ getPortFromToml(selectedInstance.config_toml) }}</span>
                   &nbsp;·&nbsp;
@@ -547,6 +739,23 @@ async function copyLink(link: string) {
 
               <div class="flex flex-wrap items-center gap-2 sm:justify-end">
                 <UButton
+                  icon="i-lucide-download"
+                  color="neutral"
+                  variant="outline"
+                  @click="handleExport"
+                >
+                  Export
+                </UButton>
+                <UButton
+                  icon="i-lucide-copy"
+                  color="neutral"
+                  variant="outline"
+                  :loading="isDuplicating"
+                  @click="handleDuplicate"
+                >
+                  Duplicate
+                </UButton>
+                <UButton
                   icon="i-lucide-settings"
                   color="neutral"
                   variant="outline"
@@ -559,7 +768,7 @@ async function copyLink(link: string) {
                   color="neutral"
                   variant="ghost"
                   class="text-rose-600 dark:text-rose-400"
-                  @click="handleDeleteInstance(selectedInstance.id)"
+                  @click="requestDeleteInstance(selectedInstance.id)"
                 >
                   Delete
                 </UButton>
@@ -627,21 +836,45 @@ async function copyLink(link: string) {
               <div class="flex items-center gap-2">
                 <UIcon name="i-lucide-terminal" class="h-4 w-4 text-neutral-500" />
                 <span class="text-sm font-semibold text-neutral-900 dark:text-white">Recent Logs</span>
+                <span class="text-xs text-neutral-400">({{ filteredLogs.length }})</span>
               </div>
-              <label class="flex cursor-pointer select-none items-center gap-1.5">
-                <input type="checkbox" v-model="autoScroll" class="rounded accent-primary-500" />
-                <span class="text-xs text-neutral-500 dark:text-neutral-400">Auto-scroll</span>
-              </label>
+              <div class="flex items-center gap-3">
+                <UInput v-model="logSearch" placeholder="Search logs…" icon="i-lucide-search" size="xs" class="w-40" />
+                <UButton icon="i-lucide-maximize-2" size="xs" variant="ghost" color="neutral" @click="isLogFullscreen = true" />
+                <label class="flex cursor-pointer select-none items-center gap-1.5">
+                  <input type="checkbox" v-model="autoScroll" class="rounded accent-primary-500" />
+                  <span class="text-xs text-neutral-500 dark:text-neutral-400">Auto-scroll</span>
+                </label>
+              </div>
             </div>
           </template>
 
           <div ref="logsContainer" class="h-48 overflow-y-auto rounded-lg bg-neutral-950 p-4 font-mono text-xs leading-relaxed">
-            <div v-if="recentLogs.length === 0" class="text-neutral-600">No logs yet.</div>
-            <div v-for="(log, idx) in recentLogs" :key="idx" class="text-neutral-400">
+            <div v-if="filteredLogs.length === 0" class="text-neutral-600">{{ logSearch ? 'No matching logs.' : 'No logs yet.' }}</div>
+            <div v-for="(log, idx) in filteredLogs" :key="idx" class="text-neutral-400">
               {{ log }}
             </div>
           </div>
         </UCard>
+
+        <!-- Log Fullscreen Modal -->
+        <UModal v-model:open="isLogFullscreen" title="Logs" fullscreen>
+          <template #default />
+          <template #body>
+            <div class="flex flex-col gap-3 h-full">
+              <div class="flex items-center gap-3">
+                <UInput v-model="logSearch" placeholder="Search logs…" icon="i-lucide-search" class="flex-1" />
+                <span class="text-xs text-neutral-400 whitespace-nowrap">{{ filteredLogs.length }} lines</span>
+              </div>
+              <div ref="fullscreenLogsContainer" class="flex-1 min-h-0 overflow-y-auto rounded-lg bg-neutral-950 p-4 font-mono text-xs leading-relaxed" style="max-height: calc(100vh - 200px)">
+                <div v-if="filteredLogs.length === 0" class="text-neutral-600">{{ logSearch ? 'No matching logs.' : 'No logs yet.' }}</div>
+                <div v-for="(log, idx) in filteredLogs" :key="idx" class="text-neutral-400">
+                  {{ log }}
+                </div>
+              </div>
+            </div>
+          </template>
+        </UModal>
       </div>
 
       <!-- Empty State -->

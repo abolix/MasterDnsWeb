@@ -8,6 +8,11 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+try:
+    import psutil
+except ModuleNotFoundError:
+    psutil = None
+
 
 def _app_dir() -> Path:
     """Return the app directory: binary's folder in production, project root in dev."""
@@ -588,6 +593,57 @@ def get_binary_version():
 		return {"version": None, "error": "Binary timed out"}
 
 	return {"version": output}
+
+
+@service_router.get("/{name}/metrics")
+def get_service_metrics(name: str):
+	"""Return CPU, memory, and uptime for a running instance."""
+	validated = ServiceController.validate_name(name)
+	svc_name = f"masterdns-{validated}"
+	try:
+		result = subprocess.run(
+			["systemctl", "show", svc_name, "--property=MainPID,ActiveEnterTimestamp"],
+			capture_output=True, text=True, timeout=5, check=False,
+		)
+	except Exception:
+		raise HTTPException(status_code=500, detail="Failed to query systemd")
+
+	props = {}
+	for line in result.stdout.strip().splitlines():
+		if "=" in line:
+			k, v = line.split("=", 1)
+			props[k.strip()] = v.strip()
+
+	pid = int(props.get("MainPID", "0"))
+	if pid == 0:
+		return {"cpu": 0, "memory": 0, "uptime_seconds": 0}
+
+	if psutil is None:
+		return {"cpu": 0, "memory": 0, "uptime_seconds": 0, "error": "psutil not installed"}
+
+	try:
+		proc = psutil.Process(pid)
+		cpu = proc.cpu_percent(interval=0.3)
+		mem = proc.memory_percent()  # percentage of system RAM
+		uptime = 0
+		timestamp_str = props.get("ActiveEnterTimestamp", "")
+		if timestamp_str:
+			import datetime
+			try:
+				parts = timestamp_str.rsplit(" ", 1)
+				dt_str = parts[0] if len(parts) > 1 else timestamp_str
+				dt = datetime.datetime.strptime(dt_str, "%a %Y-%m-%d %H:%M:%S")
+				uptime = int((datetime.datetime.now() - dt).total_seconds())
+			except (ValueError, IndexError):
+				pass
+		if uptime <= 0:
+			import time as _time
+			uptime = max(0, int(_time.time() - proc.create_time()))
+		return {"cpu": round(cpu, 1), "memory": round(mem, 1), "uptime_seconds": uptime}
+	except psutil.NoSuchProcess:
+		return {"cpu": 0, "memory": 0, "uptime_seconds": 0}
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
 
 
 @service_router.post("/{name}/start")

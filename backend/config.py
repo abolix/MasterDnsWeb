@@ -1,7 +1,8 @@
-import json, re, sys
+import io, json, re, sys, zipfile
 from pathlib import Path
 from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from service_controller import ServiceController
@@ -247,6 +248,119 @@ def create_profile(request: CreateProfileRequest, _: str = Depends(get_current_u
     return ConfigCRUD.create(request)
 
 
+@config_router.get("")
+def list_profiles():
+    return ConfigCRUD.list_all()
+
+
+@config_router.get("/export/{name}")
+def export_profile(name: str, _: str = Depends(get_current_username)):
+    """Download a profile as a JSON file."""
+    validated_name = ConfigCRUD.validate_name(name)
+    file_path = profile_file_path(validated_name)
+    ConfigCRUD.ensure_exists(file_path, validated_name)
+    data = file_path.read_bytes()
+    return Response(
+        content=data,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{validated_name}.json"'},
+    )
+
+
+@config_router.post("/import")
+async def import_profile(file: UploadFile, _: str = Depends(get_current_username)):
+    """Upload a profile JSON file to create a new instance."""
+    if not file.filename or not file.filename.endswith(".json"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only .json files are accepted")
+
+    raw = await file.read()
+    if len(raw) > 1_048_576:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File is too large (max 1 MB)")
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid JSON: {exc}") from exc
+
+    name = payload.get("name")
+    if not name or not NAME_PATTERN.fullmatch(str(name)):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or missing 'name' in JSON")
+
+    configure = payload.get("configure")
+    resolver = payload.get("resolver")
+    if not isinstance(configure, dict) or not isinstance(resolver, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="JSON must contain 'configure' (object) and 'resolver' (array)")
+
+    request = CreateProfileRequest(
+        name=name,
+        configure=ClientConfig(**configure),
+        resolver=resolver,
+    )
+    return ConfigCRUD.create(request)
+
+
+@config_router.get("/export-all")
+def export_all_profiles(_: str = Depends(get_current_username)):
+    """Download all profiles as a zip archive."""
+    files = sorted(DATA_DIR.glob("*.json"))
+    if not files:
+        raise HTTPException(status_code=404, detail="No profiles found")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in files:
+            zf.writestr(f.name, f.read_bytes())
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="masterdns-backup.zip"'},
+    )
+
+
+@config_router.post("/import-all")
+async def import_all_profiles(file: UploadFile, _: str = Depends(get_current_username)):
+    """Upload a zip of profile JSON files to import."""
+    if not file.filename or not file.filename.endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Only .zip files are accepted")
+    raw = await file.read()
+    if len(raw) > 10_485_760:
+        raise HTTPException(status_code=400, detail="File too large (max 10 MB)")
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            created = []
+            errors = []
+            for entry in zf.namelist():
+                if not entry.endswith(".json"):
+                    continue
+                try:
+                    payload = json.loads(zf.read(entry))
+                    name = payload.get("name")
+                    if not name or not NAME_PATTERN.fullmatch(str(name)):
+                        errors.append(f"{entry}: invalid name")
+                        continue
+                    configure = payload.get("configure")
+                    resolver = payload.get("resolver")
+                    if not isinstance(configure, dict) or not isinstance(resolver, list):
+                        errors.append(f"{entry}: invalid structure")
+                        continue
+                    request = CreateProfileRequest(
+                        name=name,
+                        configure=ClientConfig(**configure),
+                        resolver=resolver,
+                    )
+                    ConfigCRUD.create(request)
+                    created.append(name)
+                except HTTPException as exc:
+                    errors.append(f"{entry}: {exc.detail}")
+                except Exception as exc:
+                    errors.append(f"{entry}: {exc}")
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid zip: {exc}") from exc
+
+    return {"created": created, "errors": errors}
+
+
 @config_router.put("/{name}")
 def update_profile(name: str, request: UpdateProfileRequest, _: str = Depends(get_current_username)):
     return ConfigCRUD.update(name, request)
@@ -255,11 +369,6 @@ def update_profile(name: str, request: UpdateProfileRequest, _: str = Depends(ge
 @config_router.delete("/{name}")
 def delete_profile(name: str):
     return ConfigCRUD.delete(name)
-
-
-@config_router.get("")
-def list_profiles():
-    return ConfigCRUD.list_all()
 
 
 @config_router.get("/{name}")
