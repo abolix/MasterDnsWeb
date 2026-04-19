@@ -87,6 +87,59 @@ function getPortFromToml(toml: string): string | null {
   return match?.[1] ?? null
 }
 
+function getLocalDnsPort(toml: string): string | null {
+  const match = toml.match(/^LOCAL_DNS_PORT\s*=\s*(\d+)/m)
+  return match?.[1] ?? null
+}
+
+function isLocalDnsEnabled(toml: string): boolean {
+  const match = toml.match(/^LOCAL_DNS_ENABLED\s*=\s*(\S+)/m)
+  return match?.[1]?.toLowerCase() === 'true'
+}
+
+interface PortConflict {
+  port: string
+  type: 'listen' | 'local_dns'
+  instanceNames: string[]
+}
+
+const portConflicts = computed((): PortConflict[] => {
+  const conflicts: PortConflict[] = []
+
+  // Check LISTEN_PORT conflicts
+  const listenPortMap = new Map<string, string[]>()
+  for (const inst of instances.value) {
+    const port = getPortFromToml(inst.config_toml)
+    if (!port) continue
+    const existing = listenPortMap.get(port) ?? []
+    existing.push(inst.name)
+    listenPortMap.set(port, existing)
+  }
+  for (const [port, names] of listenPortMap) {
+    if (names.length > 1) {
+      conflicts.push({ port, type: 'listen', instanceNames: names })
+    }
+  }
+
+  // Check LOCAL_DNS_PORT conflicts (only among instances with LOCAL_DNS_ENABLED = true)
+  const localDnsPortMap = new Map<string, string[]>()
+  for (const inst of instances.value) {
+    if (!isLocalDnsEnabled(inst.config_toml)) continue
+    const port = getLocalDnsPort(inst.config_toml)
+    if (!port) continue
+    const existing = localDnsPortMap.get(port) ?? []
+    existing.push(inst.name)
+    localDnsPortMap.set(port, existing)
+  }
+  for (const [port, names] of localDnsPortMap) {
+    if (names.length > 1) {
+      conflicts.push({ port, type: 'local_dns', instanceNames: names })
+    }
+  }
+
+  return conflicts
+})
+
 function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
@@ -251,6 +304,21 @@ async function handleDeleteInstance(id: string) {
           </div>
         </template>
       </UModal>
+    </div>
+
+    <!-- Port Conflict Alerts -->
+    <div v-if="portConflicts.length > 0" class="space-y-2">
+      <div
+        v-for="conflict in portConflicts"
+        :key="`${conflict.type}-${conflict.port}`"
+        class="flex items-start gap-3 rounded-xl bg-rose-50 px-4 py-3 ring-1 ring-rose-200 dark:bg-rose-900/20 dark:ring-rose-700/40"
+      >
+        <UIcon name="i-lucide-triangle-alert" class="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
+        <p class="text-sm text-rose-800 dark:text-rose-300">
+          <span class="font-semibold">Port conflict on {{ conflict.type === 'listen' ? 'LISTEN_PORT' : 'LOCAL_DNS_PORT' }} {{ conflict.port }}:</span>
+          {{ conflict.instanceNames.join(', ') }} are using the same port. Only one instance can bind to a port at a time.
+        </p>
+      </div>
     </div>
 
     <!-- Instances Grid -->

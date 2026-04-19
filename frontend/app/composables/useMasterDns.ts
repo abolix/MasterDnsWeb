@@ -454,7 +454,7 @@ export const useMasterDns = () => {
       resolver: resolvers,
     }
 
-    await $fetch(`/config/${encodeURIComponent(id)}`, {
+    const response = await $fetch<{ service?: { start_warning?: string } }>(`/config/${encodeURIComponent(id)}`, {
       ...fetchOptions,
       method: 'PUT',
       body: payload,
@@ -471,6 +471,9 @@ export const useMasterDns = () => {
 
     // Backend does stop+start after config update; refresh the actual status
     await fetchInstanceStatus(id).catch(() => {})
+
+    // Return any non-fatal warning from the backend (e.g. service failed to restart)
+    return response?.service?.start_warning ?? null
   }
 
   const updateHostMetrics = async () => {
@@ -503,6 +506,21 @@ export const useMasterDns = () => {
     return instance.logs.slice(-count)
   }
 
+  const binaryVersion = useState<string | null>('dns.binaryVersion', () => null)
+
+  const fetchBinaryVersion = async () => {
+    try {
+      const result = await $fetch<{ version: string | null }>('/service/binary-version', {
+        ...fetchOptions,
+        method: 'GET',
+      })
+      binaryVersion.value = result.version ?? null
+    }
+    catch {
+      binaryVersion.value = null
+    }
+  }
+
   if (import.meta.client && !hasLoaded.value && !isLoading.value) {
     void loadInstances()
   }
@@ -513,6 +531,7 @@ export const useMasterDns = () => {
     isLoading: readonly(isLoading),
     hasLoaded: readonly(hasLoaded),
     selectedInstanceId,
+    binaryVersion: readonly(binaryVersion),
     loadInstances,
     getInstanceById,
     getSelectedInstance,
@@ -525,6 +544,7 @@ export const useMasterDns = () => {
     fetchInstanceLogs,
     updateInstanceConfig,
     updateHostMetrics,
-    getInstanceLogs
+    getInstanceLogs,
+    fetchBinaryVersion,
   }
 }

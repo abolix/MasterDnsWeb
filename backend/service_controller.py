@@ -526,14 +526,26 @@ class ServiceController:
 		unit_path = cls.write_unit_file(validated_name)
 		cls.daemon_reload()
 		cls._run_systemctl(["stop", cls.unit_name(validated_name)], check=False)
-		cls._run_systemctl(["start", cls.unit_name(validated_name)])
 
-		return {
+		# Attempt to restart the service.  If the service fails to start (e.g.
+		# the binary rejects the configuration), we do NOT propagate the error
+		# back as an HTTP 500 — the config has already been saved successfully.
+		# The caller can inspect instance status / logs to diagnose startup issues.
+		start_warning: str | None = None
+		try:
+			cls._run_systemctl(["start", cls.unit_name(validated_name)])
+		except HTTPException as exc:
+			start_warning = exc.detail
+
+		result: dict[str, Any] = {
 			"status": "success",
 			"message": f"Service '{cls.unit_name(validated_name)}' refreshed successfully",
 			"unit": cls.unit_name(validated_name),
 			"unit_file": str(unit_path),
 		}
+		if start_warning:
+			result["start_warning"] = start_warning
+		return result
 
 	@classmethod
 	def remove_for_profile(cls, name: str) -> dict[str, Any]:
@@ -578,3 +590,26 @@ def get_service_status(name: str):
 @service_router.get("/{name}/logs")
 def get_service_logs(name: str, lines: int = Query(default=100, ge=1, le=2000)):
 	return ServiceController.logs(name, lines)
+
+
+@service_router.get("/binary-version")
+def get_binary_version():
+	"""Return the MasterDnsVPN binary version string."""
+	try:
+		binary = ServiceController.resolve_runtime_binary_source()
+	except HTTPException:
+		return {"version": None, "error": "Binary not found"}
+
+	try:
+		result = subprocess.run(
+			[str(binary), "--version"],
+			capture_output=True,
+			text=True,
+			timeout=5,
+			check=False,
+		)
+		output = (result.stdout.strip() or result.stderr.strip()) or "unknown"
+	except subprocess.TimeoutExpired:
+		return {"version": None, "error": "Binary timed out"}
+
+	return {"version": output}

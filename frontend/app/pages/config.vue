@@ -61,6 +61,9 @@ function parseResolvers(text: string) {
     })
 }
 
+// Debounced count to avoid freezing the UI when editing large resolver lists
+const resolverCount = computed(() => parseResolvers(resolverText.value).length)
+
 function removeDuplicateResolvers() {
   const resolvers = parseResolvers(resolverText.value)
   resolverText.value = resolvers.join('\n')
@@ -163,7 +166,7 @@ async function applyConfig() {
   isApplying.value = true
 
   try {
-    await updateInstanceConfig(currentInstance.value.id, tomlText.value, resolvers)
+    const startWarning = await updateInstanceConfig(currentInstance.value.id, tomlText.value, resolvers)
     resolverText.value = resolvers.join('\n')
 
     toast.add({
@@ -172,6 +175,17 @@ async function applyConfig() {
       icon: 'i-lucide-check-circle',
       color: 'success',
     })
+
+    if (startWarning) {
+      toast.add({
+        title: 'Service did not restart',
+        description: startWarning,
+        icon: 'i-lucide-triangle-alert',
+        color: 'warning',
+        duration: 10000,
+      })
+    }
+
     navigateTo('/instances')
   }
   catch (error: any) {
@@ -282,10 +296,10 @@ async function applyConfig() {
                   <UIcon name="i-lucide-list-tree" class="h-4 w-4 text-neutral-500" />
                   <span class="text-sm font-semibold text-neutral-900 dark:text-white">Resolvers</span>
                 </div>
-                <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">One resolver per line</p>
+                <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">One IP per line</p>
               </div>
               <div class="flex items-center gap-2">
-                <UBadge color="neutral" variant="subtle">{{ parseResolvers(resolverText).length }}</UBadge>
+                <UBadge color="neutral" variant="subtle">{{ resolverCount }}</UBadge>
                 <UButton
                   icon="i-lucide-list-filter"
                   color="neutral"
