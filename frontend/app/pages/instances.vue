@@ -324,10 +324,13 @@ async function handleDuplicate() {
       )
     }
     await updateInstanceConfig(newName, toml, [...src.resolvers])
+    // Backend restarts the service after a config update; stop it so the
+    // user can adjust settings and port before starting manually.
+    await stopInstance(newName).catch(() => {})
 
     toast.add({
       title: 'Instance duplicated',
-      description: `Created ${newName} from ${src.name}${currentPort ? ` (port ${Number(currentPort) + 1})` : ''}.`,
+      description: `Created ${newName} — configure the port and start when ready.`,
       icon: 'i-lucide-copy',
       color: 'success',
     })
