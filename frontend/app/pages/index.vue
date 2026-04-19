@@ -4,21 +4,36 @@ definePageMeta({
 })
 
 const { hostMetrics, instances, updateHostMetrics } = useMasterDns()
-const metricsInterval = ref<ReturnType<typeof setInterval> | null>(null)
+
+// ── Polling ──────────────────────────────────────────────────────────────────
+const POLL_INTERVAL = 5
+let metricsTimer: ReturnType<typeof setInterval> | null = null
+let tickTimer: ReturnType<typeof setInterval> | null = null
+const secondsSinceUpdate = ref(0)
+const lastUpdatedAt = ref(new Date())
 
 onMounted(() => {
   updateHostMetrics()
-  metricsInterval.value = setInterval(() => {
-    updateHostMetrics()
-  }, 5000)
+
+  metricsTimer = setInterval(async () => {
+    await updateHostMetrics()
+    lastUpdatedAt.value = new Date()
+    secondsSinceUpdate.value = 0
+  }, POLL_INTERVAL * 1000)
+
+  tickTimer = setInterval(() => {
+    secondsSinceUpdate.value = Math.min(secondsSinceUpdate.value + 1, POLL_INTERVAL)
+  }, 1000)
 })
 
 onUnmounted(() => {
-  if (metricsInterval.value) {
-    clearInterval(metricsInterval.value)
-  }
+  if (metricsTimer) clearInterval(metricsTimer)
+  if (tickTimer) clearInterval(tickTimer)
 })
 
+const nextRefreshIn = computed(() => POLL_INTERVAL - secondsSinceUpdate.value)
+
+// ── Metric colors ─────────────────────────────────────────────────────────────
 const cpuColor = computed(() => {
   const cpu = hostMetrics.value.cpu
   if (cpu > 80) return 'error'
@@ -42,6 +57,7 @@ const diskColor = computed(() => {
 
 const runningCount = computed(() => instances.value.filter(i => i.status === 'running').length)
 const totalCount = computed(() => instances.value.length)
+
 </script>
 
 <template>
@@ -51,23 +67,26 @@ const totalCount = computed(() => instances.value.length)
       <h1 class="text-2xl font-bold tracking-tight text-neutral-900 dark:text-white">Dashboard</h1>
     </div>
 
-    <!-- Status Summary Row -->
-    <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+    <!-- Status Summary Row (3 cards: Running / Total / Live polling) -->
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
       <div class="rounded-xl bg-linear-to-br from-emerald-500/10 to-emerald-600/5 p-4 ring-1 ring-emerald-500/20 dark:from-emerald-500/15 dark:to-emerald-600/5 dark:ring-emerald-500/10">
         <p class="text-xs font-medium text-emerald-700 dark:text-emerald-400">Running</p>
         <p class="mt-1 text-2xl font-bold text-emerald-900 dark:text-emerald-100">{{ runningCount }}</p>
       </div>
+
       <div class="rounded-xl bg-linear-to-br from-neutral-500/10 to-neutral-600/5 p-4 ring-1 ring-neutral-500/20 dark:from-neutral-500/15 dark:to-neutral-600/5 dark:ring-neutral-500/10">
         <p class="text-xs font-medium text-neutral-700 dark:text-neutral-400">Total Instances</p>
         <p class="mt-1 text-2xl font-bold text-neutral-900 dark:text-neutral-100">{{ totalCount }}</p>
       </div>
-      <div class="rounded-xl bg-linear-to-br from-blue-500/10 to-blue-600/5 p-4 ring-1 ring-blue-500/20 dark:from-blue-500/15 dark:to-blue-600/5 dark:ring-blue-500/10">
-        <p class="text-xs font-medium text-blue-700 dark:text-blue-400">Last Updated</p>
-        <p class="mt-1 text-sm font-semibold text-blue-900 dark:text-blue-100">{{ new Date(hostMetrics.timestamp).toLocaleTimeString() }}</p>
-      </div>
-      <div class="rounded-xl bg-linear-to-br from-violet-500/10 to-violet-600/5 p-4 ring-1 ring-violet-500/20 dark:from-violet-500/15 dark:to-violet-600/5 dark:ring-violet-500/10">
-        <p class="text-xs font-medium text-violet-700 dark:text-violet-400">Poll Interval</p>
-        <p class="mt-1 text-2xl font-bold text-violet-900 dark:text-violet-100">5s</p>
+
+      <!-- Combined polling card -->
+      <div class="rounded-xl bg-linear-to-br from-blue-500/10 to-violet-500/5 p-4 ring-1 ring-blue-500/20 dark:from-blue-500/15 dark:to-violet-600/5 dark:ring-blue-500/10">
+        <div class="flex items-center gap-1.5">
+          <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500"></span>
+          <p class="text-xs font-medium text-blue-700 dark:text-blue-400">Live · every {{ POLL_INTERVAL }}s</p>
+        </div>
+        <p class="mt-1 text-sm font-bold text-blue-900 dark:text-blue-100">{{ lastUpdatedAt.toLocaleTimeString() }}</p>
+        <p class="mt-0.5 text-xs text-blue-700/60 dark:text-blue-400/60">Next in {{ nextRefreshIn }}s</p>
       </div>
     </div>
 

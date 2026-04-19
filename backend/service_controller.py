@@ -567,6 +567,29 @@ class ServiceController:
 		}
 
 
+@service_router.get("/binary-version")
+def get_binary_version():
+	"""Return the MasterDnsVPN binary version string."""
+	try:
+		binary = ServiceController.resolve_runtime_binary_source()
+	except HTTPException:
+		return {"version": None, "error": "Binary not found"}
+
+	try:
+		result = subprocess.run(
+			[str(binary), "--version"],
+			capture_output=True,
+			text=True,
+			timeout=5,
+			check=False,
+		)
+		output = (result.stdout.strip() or result.stderr.strip()) or "unknown"
+	except subprocess.TimeoutExpired:
+		return {"version": None, "error": "Binary timed out"}
+
+	return {"version": output}
+
+
 @service_router.post("/{name}/start")
 def start_service(name: str):
 	return ServiceController.start(name)
@@ -590,26 +613,3 @@ def get_service_status(name: str):
 @service_router.get("/{name}/logs")
 def get_service_logs(name: str, lines: int = Query(default=100, ge=1, le=2000)):
 	return ServiceController.logs(name, lines)
-
-
-@service_router.get("/binary-version")
-def get_binary_version():
-	"""Return the MasterDnsVPN binary version string."""
-	try:
-		binary = ServiceController.resolve_runtime_binary_source()
-	except HTTPException:
-		return {"version": None, "error": "Binary not found"}
-
-	try:
-		result = subprocess.run(
-			[str(binary), "--version"],
-			capture_output=True,
-			text=True,
-			timeout=5,
-			check=False,
-		)
-		output = (result.stdout.strip() or result.stderr.strip()) or "unknown"
-	except subprocess.TimeoutExpired:
-		return {"version": None, "error": "Binary timed out"}
-
-	return {"version": output}

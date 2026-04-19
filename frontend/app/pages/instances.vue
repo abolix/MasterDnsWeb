@@ -269,6 +269,58 @@ async function handleDeleteInstance(id: string) {
     })
   }
 }
+
+// ── Telegram SOCKS5 proxy link (per selected instance) ────────────────────────
+const serverHost = ref('')
+onMounted(() => {
+  serverHost.value = window.location.hostname
+})
+const isLocalhost = computed(() =>
+  !serverHost.value ||
+  serverHost.value === 'localhost' ||
+  serverHost.value === '127.0.0.1' ||
+  serverHost.value === '::1'
+)
+
+function getTomlField(toml: string, key: string): string | null {
+  const match = toml.match(new RegExp(`^${key}\\s*=\\s*(.+)$`, 'm'))
+  const raw = match?.[1]
+  if (!raw) return null
+  return raw.trim().replace(/^["']|["']$/g, '').trim() || null
+}
+
+interface TelegramProxy { link: string | null; warning: string | null }
+
+const telegramProxy = computed((): TelegramProxy | null => {
+  if (!selectedInstance.value) return null
+  const toml = selectedInstance.value.config_toml
+  if (getTomlField(toml, 'PROTOCOL_TYPE')?.toUpperCase() !== 'SOCKS5') return null
+
+  const port = getTomlField(toml, 'LISTEN_PORT')
+  if (!port) return { link: null, warning: 'LISTEN_PORT not set' }
+
+  const authEnabled = getTomlField(toml, 'SOCKS5_AUTH')?.toLowerCase() === 'true'
+  if (authEnabled) {
+    const user = getTomlField(toml, 'SOCKS5_USER')
+    const pass = getTomlField(toml, 'SOCKS5_PASS')
+    if (!user || !pass) return { link: null, warning: 'Auth enabled but SOCKS5_USER / SOCKS5_PASS not set' }
+    return {
+      link: `tg://socks?server=${serverHost.value}&port=${port}&user=${encodeURIComponent(user)}&pass=${encodeURIComponent(pass)}`,
+      warning: null,
+    }
+  }
+  return { link: `tg://socks?server=${serverHost.value}&port=${port}`, warning: null }
+})
+
+async function copyLink(link: string) {
+  try {
+    await navigator.clipboard.writeText(link)
+    toast.add({ title: 'Copied!', icon: 'i-lucide-check', color: 'success' })
+  }
+  catch {
+    toast.add({ title: 'Could not copy to clipboard', icon: 'i-lucide-x', color: 'error' })
+  }
+}
 </script>
 
 <template>
@@ -489,6 +541,58 @@ async function handleDeleteInstance(id: string) {
             </div>
           </div>
         </div>
+
+        <!-- Telegram Proxy Link -->
+        <UCard v-if="telegramProxy">
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-simple-icons-telegram" class="h-4 w-4 text-neutral-500" />
+              <h3 class="text-sm font-semibold text-neutral-900 dark:text-white">Telegram Proxy Link</h3>
+            </div>
+          </template>
+
+          <!-- Localhost warning -->
+          <div
+            v-if="isLocalhost"
+            class="flex items-start gap-3 rounded-lg bg-amber-50 p-3 ring-1 ring-amber-200 dark:bg-amber-900/20 dark:ring-amber-700/40"
+          >
+            <UIcon name="i-lucide-triangle-alert" class="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <p class="text-sm text-amber-800 dark:text-amber-300">
+              Open the panel using the server&apos;s public IP to generate a valid proxy link.
+            </p>
+          </div>
+
+          <!-- Config warning -->
+          <div
+            v-else-if="telegramProxy.warning"
+            class="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400"
+          >
+            <UIcon name="i-lucide-triangle-alert" class="h-3.5 w-3.5 shrink-0" />
+            {{ telegramProxy.warning }}
+          </div>
+
+          <!-- Link -->
+          <div v-else class="flex items-center gap-2 rounded-lg bg-neutral-100 px-3 py-2 dark:bg-neutral-900">
+            <code class="flex-1 break-all font-mono text-xs text-neutral-700 dark:text-neutral-300">{{ telegramProxy.link }}</code>
+            <UButton
+              icon="i-lucide-copy"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              class="shrink-0"
+              @click="copyLink(telegramProxy.link!)"
+            />
+            <UButton
+              :to="telegramProxy.link!"
+              external
+              icon="i-simple-icons-telegram"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              class="shrink-0"
+            />
+          </div>
+        </UCard>
 
         <!-- Recent Logs -->
         <UCard>
