@@ -15,6 +15,7 @@ from config import config_router
 from service_controller import service_router
 from system_stats import system_stats_router
 from user import user_router
+from ws import ws_router
 
 def get_app_dir() -> Path:
     if getattr(sys, "frozen", False):
@@ -69,6 +70,7 @@ app.include_router(user_router)
 app.include_router(config_router)
 app.include_router(service_router)
 app.include_router(system_stats_router)
+app.include_router(ws_router)
 
 
 def frontend_bundle_exists() -> bool:

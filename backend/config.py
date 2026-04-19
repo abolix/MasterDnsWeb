@@ -1,4 +1,8 @@
-import io, json, re, sys, zipfile
+import io
+import json
+import re
+import sys
+import zipfile
 from pathlib import Path
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
@@ -27,7 +31,6 @@ NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class ClientConfig(BaseModel):
-    """Accepts any TOML-derived config keys. Only DOMAINS and ENCRYPTION_KEY are required."""
     model_config = ConfigDict(extra="allow")
 
     DOMAINS: list[str]
@@ -255,7 +258,6 @@ def list_profiles():
 
 @config_router.get("/export/{name}")
 def export_profile(name: str, _: str = Depends(get_current_username)):
-    """Download a profile as a JSON file."""
     validated_name = ConfigCRUD.validate_name(name)
     file_path = profile_file_path(validated_name)
     ConfigCRUD.ensure_exists(file_path, validated_name)
@@ -269,7 +271,6 @@ def export_profile(name: str, _: str = Depends(get_current_username)):
 
 @config_router.post("/import")
 async def import_profile(file: UploadFile, _: str = Depends(get_current_username)):
-    """Upload a profile JSON file to create a new instance."""
     if not file.filename or not file.filename.endswith(".json"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only .json files are accepted")
 
@@ -301,7 +302,6 @@ async def import_profile(file: UploadFile, _: str = Depends(get_current_username
 
 @config_router.get("/export-all")
 def export_all_profiles(_: str = Depends(get_current_username)):
-    """Download all profiles as a zip archive."""
     files = sorted(DATA_DIR.glob("*.json"))
     if not files:
         raise HTTPException(status_code=404, detail="No profiles found")
@@ -319,7 +319,6 @@ def export_all_profiles(_: str = Depends(get_current_username)):
 
 @config_router.post("/import-all")
 async def import_all_profiles(file: UploadFile, _: str = Depends(get_current_username)):
-    """Upload a zip of profile JSON files to import."""
     if not file.filename or not file.filename.endswith(".zip"):
         raise HTTPException(status_code=400, detail="Only .zip files are accepted")
     raw = await file.read()

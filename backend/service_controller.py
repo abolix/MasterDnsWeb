@@ -15,7 +15,6 @@ except ModuleNotFoundError:
 
 
 def _app_dir() -> Path:
-    """Return the app directory: binary's folder in production, project root in dev."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
@@ -82,17 +81,17 @@ class ServiceController:
 		configured_path = Path(raw_exec_start).expanduser()
 		candidates: list[Path] = []
 
-		# 1. Next to the running binary (release layout: MasterDnsWeb/ folder)
+		#? 1. Next to the running binary (release layout: MasterDnsWeb/ folder)
 		if configured_path.name:
 			candidates.append(app_dir / configured_path.name)
 
-		# 2. Absolute path as configured
+		#? 2. Absolute path as configured
 		if configured_path.is_absolute():
 			candidates.append(configured_path)
 		else:
 			candidates.append((backend_dir / configured_path).resolve())
 
-		# 3. Dev fallback: backend/bin/
+		#? 3. Dev fallback: backend/bin/
 		if configured_path.name:
 			candidates.append(backend_dir / "bin" / configured_path.name)
 
@@ -123,7 +122,6 @@ class ServiceController:
 
 	@staticmethod
 	def _needs_sudo() -> bool:
-		"""True when the process is not already running as root."""
 		return hasattr(os, "geteuid") and os.geteuid() != 0
 
 	@staticmethod
@@ -169,15 +167,12 @@ class ServiceController:
 
 	@classmethod
 	def runtime_dir_for_profile(cls, name: str) -> Path:
-		"""Each profile gets its own runtime directory with config + resolvers."""
 		base = _app_dir() / "runtime" / name
 		base.mkdir(parents=True, exist_ok=True)
 		return base
 
 	@classmethod
 	def generate_runtime_files(cls, name: str) -> Path:
-		"""Read profile JSON -> write client_config.toml + client_resolvers.txt
-		into a per-profile runtime directory. Returns the directory path."""
 		validated_name = cls.validate_name(name)
 		profile_file = cls.profile_path(validated_name)
 
@@ -194,7 +189,7 @@ class ServiceController:
 
 		runtime_dir = cls.runtime_dir_for_profile(validated_name)
 
-		# --- client_config.toml ---
+		#! --- client_config.toml ---
 		toml_lines: list[str] = []
 		for key, value in configure.items():
 			if isinstance(value, list):
@@ -236,7 +231,6 @@ class ServiceController:
 	def build_unit_content(cls, name: str) -> str:
 		validated_name = cls.validate_name(name)
 		profile_path = cls.profile_path(validated_name)
-		# resolve binary first so we fail early with a clear message
 		binary_source = cls.resolve_runtime_binary_source()
 		runtime_dir = cls.generate_runtime_files(validated_name)
 		description = cls.service_description()
@@ -532,10 +526,10 @@ class ServiceController:
 		cls.daemon_reload()
 		cls._run_systemctl(["stop", cls.unit_name(validated_name)], check=False)
 
-		# Attempt to restart the service.  If the service fails to start (e.g.
-		# the binary rejects the configuration), we do NOT propagate the error
-		# back as an HTTP 500 — the config has already been saved successfully.
-		# The caller can inspect instance status / logs to diagnose startup issues.
+		#? Attempt to restart the service.  If the service fails to start (e.g.
+		#? the binary rejects the configuration), we do NOT propagate the error
+		#? back as an HTTP 500 — the config has already been saved successfully.
+		#? The caller can inspect instance status / logs to diagnose startup issues.
 		start_warning: str | None = None
 		try:
 			cls._run_systemctl(["start", cls.unit_name(validated_name)])
@@ -574,7 +568,6 @@ class ServiceController:
 
 @service_router.get("/binary-version")
 def get_binary_version():
-	"""Return the MasterDnsVPN binary version string."""
 	try:
 		binary = ServiceController.resolve_runtime_binary_source()
 	except HTTPException:
@@ -597,7 +590,6 @@ def get_binary_version():
 
 @service_router.get("/{name}/metrics")
 def get_service_metrics(name: str):
-	"""Return CPU, memory, and uptime for a running instance."""
 	validated = ServiceController.validate_name(name)
 	svc_name = f"masterdns-{validated}"
 	try:
