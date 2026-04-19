@@ -3,7 +3,7 @@ definePageMeta({
   title: 'Instances'
 })
 
-const { instances, selectedInstanceId, loadInstances, createInstance, deleteInstance, startInstance, stopInstance, restartInstance, fetchInstanceLogs, fetchInstanceMetrics, getInstanceLogs, updateInstanceConfig, exportInstance, importInstance, exportAllInstances, importAllInstances } = useMasterDns()
+const { instances, selectedInstanceId, loadInstances, createInstance, deleteInstance, startInstance, stopInstance, restartInstance, fetchInstanceLogs, getInstanceLogs, updateInstanceConfig, exportInstance, importInstance, exportAllInstances, importAllInstances } = useMasterDns()
 const toast = useToast()
 
 const isCreateDialogOpen = ref(false)
@@ -63,7 +63,6 @@ watch(
 
 // Auto-refresh logs every 5 seconds for the selected instance
 let logPollTimer: ReturnType<typeof setInterval> | null = null
-let metricsPollTimer: ReturnType<typeof setInterval> | null = null
 
 function startLogPolling() {
   stopLogPolling()
@@ -81,34 +80,13 @@ function stopLogPolling() {
   }
 }
 
-function startMetricsPolling() {
-  stopMetricsPolling()
-  if (selectedInstanceId.value) {
-    fetchInstanceMetrics(selectedInstanceId.value).catch(() => {})
-  }
-  metricsPollTimer = setInterval(async () => {
-    if (selectedInstanceId.value) {
-      await fetchInstanceMetrics(selectedInstanceId.value).catch(() => {})
-    }
-  }, 10000)
-}
-
-function stopMetricsPolling() {
-  if (metricsPollTimer) {
-    clearInterval(metricsPollTimer)
-    metricsPollTimer = null
-  }
-}
-
 watch(
   () => selectedInstanceId.value,
   (id) => {
     if (id) {
       startLogPolling()
-      startMetricsPolling()
     } else {
       stopLogPolling()
-      stopMetricsPolling()
     }
   },
   { immediate: true }
@@ -116,7 +94,6 @@ watch(
 
 onUnmounted(() => {
   stopLogPolling()
-  stopMetricsPolling()
 })
 
 const autoScroll = ref(true)
@@ -466,7 +443,19 @@ const telegramProxy = computed((): TelegramProxy | null => {
 
 async function copyLink(link: string) {
   try {
-    await navigator.clipboard.writeText(link)
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(link)
+    } else {
+      const el = document.createElement('textarea')
+      el.value = link
+      el.style.position = 'fixed'
+      el.style.opacity = '0'
+      document.body.appendChild(el)
+      el.focus()
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+    }
     toast.add({ title: 'Copied!', icon: 'i-lucide-check', color: 'success' })
   }
   catch {
@@ -485,14 +474,14 @@ async function copyLink(link: string) {
 
       <!-- Create Dialog: default slot = trigger, #body = content -->
       <div class="flex items-center gap-2">
-        <UButton icon="i-lucide-archive" variant="outline" color="neutral" :loading="isBackingUp" @click="handleBackupAll">
+        <UButton icon="i-lucide-archive" size="sm" variant="outline" color="neutral" :loading="isBackingUp" @click="handleBackupAll">
           Backup
         </UButton>
-        <UButton icon="i-lucide-archive-restore" variant="outline" color="neutral" @click="restoreFileInput?.click()">
+        <UButton icon="i-lucide-archive-restore" size="sm" variant="outline" color="neutral" @click="restoreFileInput?.click()">
           Restore
         </UButton>
         <input ref="restoreFileInput" type="file" accept=".zip" class="hidden" @change="handleRestoreAll" />
-        <UButton icon="i-lucide-upload" variant="outline" color="neutral" @click="importFileInput?.click()">
+        <UButton icon="i-lucide-upload" size="sm" variant="outline" color="neutral" @click="importFileInput?.click()">
           Import
         </UButton>
         <input ref="importFileInput" type="file" accept=".json" class="hidden" @change="handleImport" />
@@ -686,22 +675,6 @@ async function copyLink(link: string) {
             </div>
           </div>
 
-          <!-- Instance Metrics -->
-          <div v-if="selectedInstance.metrics" class="mt-5 grid grid-cols-3 gap-4">
-            <div class="rounded-lg bg-white/80 p-3 ring-1 ring-neutral-200/50 dark:bg-neutral-800/50 dark:ring-neutral-700/50">
-              <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400">CPU</p>
-              <p class="mt-0.5 text-lg font-bold text-neutral-900 dark:text-white">{{ selectedInstance.metrics.cpu.toFixed(1) }}%</p>
-            </div>
-            <div class="rounded-lg bg-white/80 p-3 ring-1 ring-neutral-200/50 dark:bg-neutral-800/50 dark:ring-neutral-700/50">
-              <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400">Memory</p>
-              <p class="mt-0.5 text-lg font-bold text-neutral-900 dark:text-white">{{ selectedInstance.metrics.memory.toFixed(1) }}%</p>
-            </div>
-            <div class="rounded-lg bg-white/80 p-3 ring-1 ring-neutral-200/50 dark:bg-neutral-800/50 dark:ring-neutral-700/50">
-              <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400">Uptime</p>
-              <p class="mt-0.5 text-lg font-bold text-neutral-900 dark:text-white">{{ (selectedInstance.metrics.uptime_seconds / 3600).toFixed(1) }}h</p>
-            </div>
-          </div>
-
           <!-- Actions -->
           <div class="mt-5 rounded-xl bg-white/60 p-3 ring-1 ring-neutral-200/60 dark:bg-neutral-950/30 dark:ring-neutral-800/80">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -740,6 +713,7 @@ async function copyLink(link: string) {
               <div class="flex flex-wrap items-center gap-2 sm:justify-end">
                 <UButton
                   icon="i-lucide-download"
+                  size="sm"
                   color="neutral"
                   variant="outline"
                   @click="handleExport"
@@ -748,6 +722,7 @@ async function copyLink(link: string) {
                 </UButton>
                 <UButton
                   icon="i-lucide-copy"
+                  size="sm"
                   color="neutral"
                   variant="outline"
                   :loading="isDuplicating"
@@ -757,6 +732,7 @@ async function copyLink(link: string) {
                 </UButton>
                 <UButton
                   icon="i-lucide-settings"
+                  size="sm"
                   color="neutral"
                   variant="outline"
                   @click="goToConfig(selectedInstance.id)"
@@ -765,6 +741,7 @@ async function copyLink(link: string) {
                 </UButton>
                 <UButton
                   icon="i-lucide-trash-2"
+                  size="sm"
                   color="neutral"
                   variant="ghost"
                   class="text-rose-600 dark:text-rose-400"
@@ -778,7 +755,7 @@ async function copyLink(link: string) {
         </div>
 
         <!-- Telegram Proxy Link -->
-        <UCard v-if="telegramProxy">
+        <UCard v-if="telegramProxy && selectedInstance?.status === 'running'">
           <template #header>
             <div class="flex items-center gap-2">
               <UIcon name="i-simple-icons-telegram" class="h-4 w-4 text-neutral-500" />
@@ -849,7 +826,7 @@ async function copyLink(link: string) {
             </div>
           </template>
 
-          <div ref="logsContainer" class="h-48 overflow-y-auto rounded-lg bg-neutral-950 p-4 font-mono text-xs leading-relaxed">
+          <div ref="logsContainer" class="h-72 overflow-y-auto rounded-lg bg-neutral-950 p-4 font-mono text-xs leading-relaxed">
             <div v-if="filteredLogs.length === 0" class="text-neutral-600">{{ logSearch ? 'No matching logs.' : 'No logs yet.' }}</div>
             <div v-for="(log, idx) in filteredLogs" :key="idx" class="text-neutral-400">
               {{ log }}
