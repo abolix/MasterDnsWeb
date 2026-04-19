@@ -435,6 +435,32 @@ async function copyLink(link: string) {
                 </template>
                 <span class="font-medium">{{ selectedInstance.resolvers.length }}</span> resolvers
               </p>
+
+              <!-- Auth chips -->
+              <div
+                v-if="getTomlField(selectedInstance.config_toml, 'SOCKS5_AUTH') !== null"
+                class="mt-2 flex flex-wrap items-center gap-1.5"
+              >
+                <span
+                  class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ring-1"
+                  :class="getTomlField(selectedInstance.config_toml, 'SOCKS5_AUTH')?.toLowerCase() === 'true'
+                    ? 'bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-500/25'
+                    : 'bg-neutral-100 text-neutral-500 ring-neutral-200 dark:bg-neutral-700/40 dark:text-neutral-400 dark:ring-neutral-600/50'"
+                >
+                  <UIcon
+                    :name="getTomlField(selectedInstance.config_toml, 'SOCKS5_AUTH')?.toLowerCase() === 'true' ? 'i-lucide-lock' : 'i-lucide-lock-open'"
+                    class="h-3 w-3 shrink-0"
+                  />
+                  {{ getTomlField(selectedInstance.config_toml, 'SOCKS5_AUTH')?.toLowerCase() === 'true' ? 'Auth Enabled' : 'No Auth' }}
+                </span>
+                <span
+                  v-if="getTomlField(selectedInstance.config_toml, 'SOCKS5_AUTH')?.toLowerCase() === 'true' && getTomlField(selectedInstance.config_toml, 'SOCKS5_USER')"
+                  class="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-mono text-neutral-700 ring-1 ring-neutral-200 dark:bg-neutral-700/40 dark:text-neutral-300 dark:ring-neutral-600/50"
+                >
+                  <UIcon name="i-lucide-user" class="h-3 w-3 shrink-0" />
+                  {{ getTomlField(selectedInstance.config_toml, 'SOCKS5_USER') }}
+                </span>
+              </div>
             </div>
             <UBadge
               :color="selectedInstance.status === 'running' ? 'success' : 'error'"
