@@ -200,7 +200,7 @@ async function handleLogout() {
           </div>
           <div class="rounded-xl bg-linear-to-br from-neutral-100 to-neutral-50 px-3 py-2.5 dark:from-neutral-800/50 dark:to-neutral-800/30">
             <p class="text-[10px] font-medium tracking-wider text-neutral-400 uppercase dark:text-neutral-500">Panel</p>
-            <p class="mt-0.5 text-xs font-semibold text-neutral-600 dark:text-neutral-300">v1.0.1</p>
+            <p class="mt-0.5 text-xs font-semibold text-neutral-600 dark:text-neutral-300">v1.0.2</p>
             <template v-if="binaryVersion">
               <p class="mt-1.5 text-[10px] font-medium tracking-wider text-neutral-400 uppercase dark:text-neutral-500">MasterDnsVPN</p>
               <p class="mt-0.5 text-xs font-semibold text-neutral-600 dark:text-neutral-300">{{ binaryVersion }}</p>
