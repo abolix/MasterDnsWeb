@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from config import config_router
+from resolver_scanner import resolver_scanner_router
 from service_controller import service_router
 from system_stats import system_stats_router
 from user import user_router
@@ -68,6 +69,7 @@ app.add_middleware(
 )
 app.include_router(user_router)
 app.include_router(config_router)
+app.include_router(resolver_scanner_router)
 app.include_router(service_router)
 app.include_router(system_stats_router)
 app.include_router(ws_router)
